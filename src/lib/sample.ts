@@ -1,0 +1,13 @@
+import { MOU } from "@/lib/types";
+export const sampleData: MOU[] = [
+    { id: "MOU-001", title: "Kolaborasi Riset AI untuk Broiler Monitoring", partner: "PT Agro Vision Nusantara", category: "Academic", department: "R&D", owner: "Naufal Rozan", value: 250000000, startDate: "2025-01-15", endDate: "2025-12-31", status: "Active", notes: "Integrasi dashboard & uji lapangan batch-2.", attachments: [{ id: "f1", name: "Draft_MOU_AgroVision.pdf", sizeKB: 432 }, { id: "f2", name: "Lampiran_Teknis_v3.pdf", sizeKB: 781 }] },
+    { id: "MOU-002", title: "Kemitraan Layanan ERP", partner: "SISCOM Software", category: "Vendor", department: "IT", owner: "Dua Langkah Bersama", startDate: "2024-09-01", endDate: "2025-09-15", status: "Expiring" },
+    { id: "MOU-003", title: "Perjanjian Kerahasiaan (NDA)", partner: "HashMicro", category: "NDA", department: "Business Dev", owner: "Jogja Code", startDate: "2024-06-01", endDate: "2025-06-01", status: "Expired" },
+    { id: "MOU-004", title: "Kemitraan Delivery Ayoojek", partner: "CV Kuliner Sejahtera", category: "Cooperation", department: "Operations", owner: "Ayoojek Team", value: 90000000, startDate: "2025-03-10", endDate: "2026-03-10", status: "Active" },
+    { id: "MOU-005", title: "Grant Penelitian IoT Kandang", partner: "Kementan RI", category: "Grant", department: "R&D", owner: "Naufal Rozan", value: 500000000, startDate: "2025-02-01", endDate: "2025-12-01", status: "Active" },
+    { id: "MOU-006", title: "Kerahasiaan Data Merchant", partner: "PT Lesca Gadai Premier", category: "NDA", department: "Legal", owner: "DLB Tech", startDate: "2025-08-01", endDate: "2026-08-01", status: "Draft" },
+    { id: "MOU-007", title: "Pilot Project Vision Quality Control", partner: "ION Network", category: "Cooperation", department: "R&D", owner: "Jogja Code", startDate: "2025-04-05", endDate: "2025-10-10", status: "Expiring" },
+    { id: "MOU-008", title: "Kemitraan Akademik UMY", partner: "Universitas Muhammadiyah Yogyakarta", category: "Academic", department: "Partnership", owner: "DLB Tech", startDate: "2024-01-01", endDate: "2026-01-01", status: "Active" },
+    { id: "MOU-009", title: "Pembelian Perangkat Sensor", partner: "PT Sensor Kita", category: "Vendor", department: "Procurement", owner: "Ayoojek Team", startDate: "2023-11-01", endDate: "2024-11-01", status: "Terminated" },
+    { id: "MOU-010", title: "Kontrak Maintenance Dashboard", partner: "PT Agro Vision Nusantara", category: "Vendor", department: "IT", owner: "Naufal Rozan", startDate: "2025-07-01", endDate: "2026-06-30", status: "Active" },
+];
