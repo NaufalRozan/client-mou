@@ -37,6 +37,7 @@ import {
     FilePlus2,
 } from 'lucide-react';
 import { getAuth } from '@/lib/proto/auth';
+import Link from 'next/link';
 
 // ================= Roles =================
 type Role = 'LEMBAGA_KERJA_SAMA' | 'FAKULTAS' | 'PRODI' | 'ORANG_LUAR' | 'WR';
@@ -432,8 +433,11 @@ export default function MOUPage() {
                                                 <TableHead>Dokumen</TableHead>
                                                 <TableHead>Status Proses</TableHead>
                                                 <TableHead>Catatan Status</TableHead>
+                                                {/* ⬇️ Tambahan baru */}
+                                                <TableHead className="text-right">Aksi</TableHead>
                                             </TableRow>
                                         </TableHeader>
+
                                         <TableBody>
                                             {pageRows.length ? (
                                                 pageRows.map((row, idx) => {
@@ -515,6 +519,14 @@ export default function MOUPage() {
                                                                 </div>
                                                             </TableCell>
                                                             <TableCell className="text-sm">{row.statusNote || '-'}</TableCell>
+
+                                                            <TableCell className="text-right">
+                                                                <Button asChild variant="outline" size="icon" className="h-8 w-8">
+                                                                    <Link href={`/data-ajuan/${encodeURIComponent(row.id)}`} aria-label="Lihat detail">
+                                                                        <Eye className="h-4 w-4" />
+                                                                    </Link>
+                                                                </Button>
+                                                            </TableCell>
                                                         </TableRow>
                                                     );
                                                 })
@@ -622,7 +634,7 @@ function AddDocButton({
     isEdit,
     onSave,
 }: {
-    isEdit: boolean; // true = ubah, false = tambah
+    isEdit: boolean;
     onSave: (payload: { linkUrl: string | null; file: DocFile }) => void;
 }) {
     const [open, setOpen] = useState(false);
@@ -635,24 +647,17 @@ function AddDocButton({
 
     const handleSave = () => {
         const fileData: DocFile = file ? { name: file.name, url: URL.createObjectURL(file) } : null;
-
-        onSave({
-            linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
-            file: fileData,
-        });
-
+        onSave({ linkUrl: linkUrl.trim() ? linkUrl.trim() : null, file: fileData });
         setOpen(false);
-        setTimeout(() => {
-            setLinkUrl('');
-            setFile(null);
-        }, 0);
+        setTimeout(() => { setLinkUrl(''); setFile(null); }, 0);
     };
 
     return (
-        <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-                <TooltipProvider delayDuration={150}>
-                    <Tooltip>
+        <TooltipProvider delayDuration={150}>
+            <Tooltip>
+                <Sheet open={open} onOpenChange={setOpen}>
+                    {/* Penting: keduanya asChild ke elemen yang sama (Button) */}
+                    <SheetTrigger asChild>
                         <TooltipTrigger asChild>
                             <Button
                                 variant="ghost"
@@ -660,55 +665,53 @@ function AddDocButton({
                                 className="h-8 w-8 rounded-full"
                                 aria-label={isEdit ? 'Ubah Dokumen' : 'Tambah Dokumen'}
                             >
-                                {isEdit ? (
-                                    <Pencil className="h-4 w-4" />
-                                ) : (
-                                    <FilePlus2 className="h-4 w-4" />
-                                )}
+                                {isEdit ? <Pencil className="h-4 w-4" /> : <FilePlus2 className="h-4 w-4" />}
                             </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                            {isEdit ? 'Ubah Dokumen' : 'Tambah Dokumen'}
-                        </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
-            </SheetTrigger>
+                    </SheetTrigger>
 
-            <SheetContent className="w-full sm:max-w-md">
-                <SheetHeader>
-                    <SheetTitle>Tambah/Ubah Dokumen</SheetTitle>
-                </SheetHeader>
+                    <SheetContent className="w-full sm:max-w-md">
+                        <SheetHeader>
+                            <SheetTitle>Tambah/Ubah Dokumen</SheetTitle>
+                        </SheetHeader>
 
-                <div className="mt-4 space-y-4">
-                    <div className="grid gap-2">
-                        <label className="text-sm font-medium">Masukkan Link (opsional)</label>
-                        <Input
-                            placeholder="https://contoh.com/dokumen.pdf"
-                            value={linkUrl}
-                            onChange={(e) => setLinkUrl(e.target.value)}
-                        />
-                    </div>
+                        <div className="mt-4 space-y-4">
+                            <div className="grid gap-2">
+                                <label className="text-sm font-medium">Masukkan Link (opsional)</label>
+                                <Input
+                                    placeholder="https://contoh.com/dokumen.pdf"
+                                    value={linkUrl}
+                                    onChange={(e) => setLinkUrl(e.target.value)}
+                                />
+                            </div>
 
-                    <div className="grid gap-2">
-                        <label className="text-sm font-medium">Upload Dokumen (opsional)</label>
-                        <Input
-                            type="file"
-                            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                            onChange={pickFile}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            Prototype: file disimpan sementara sebagai Blob URL di browser.
-                        </p>
-                    </div>
-                </div>
+                            <div className="grid gap-2">
+                                <label className="text-sm font-medium">Upload Dokumen (opsional)</label>
+                                <Input
+                                    type="file"
+                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                                    onChange={pickFile}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Prototype: file disimpan sementara sebagai Blob URL di browser.
+                                </p>
+                            </div>
+                        </div>
 
-                <SheetFooter className="mt-6">
-                    <Button onClick={handleSave}>Simpan</Button>
-                </SheetFooter>
-            </SheetContent>
-        </Sheet>
+                        <SheetFooter className="mt-6">
+                            <Button onClick={handleSave}>Simpan</Button>
+                        </SheetFooter>
+                    </SheetContent>
+                </Sheet>
+
+                <TooltipContent>
+                    {isEdit ? 'Ubah Dokumen' : 'Tambah Dokumen'}
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
     );
 }
+
 
 
 // ============== Create Sheet (UI-only) — HANYA FIELD YANG ADA DI TABEL ==============
