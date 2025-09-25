@@ -1,7 +1,7 @@
 // src/components/kerjasama/kerjasama-detail.tsx
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,9 +10,20 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Save, Pencil, FileDown, ExternalLink, FilePlus2 } from 'lucide-react';
+import {
+    Save,
+    Pencil,
+    FileDown,
+    ExternalLink,
+    FilePlus2,
+    Send,
+    Paperclip,
+    MessageSquare,
+    CheckCircle2,
+    AlertTriangle,
+} from 'lucide-react';
 
-// ===== Types (sinkron dengan list)
+/* =================== Types (sama dengan list) =================== */
 export type MOUStatus = 'Draft' | 'Active' | 'Expiring' | 'Expired' | 'Terminated';
 export type MOULevel = 'MOU' | 'MOA' | 'IA';
 export type PartnerType = 'Universitas' | 'Industri' | 'Pemerintah' | 'Organisasi';
@@ -64,7 +75,7 @@ export type MOU = {
     notes?: string;
 };
 
-// ===== Helpers
+/* =================== Helpers =================== */
 const fmtDate = (iso: string) =>
     new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso));
 
@@ -81,7 +92,6 @@ type Props = {
 export function KerjasamaDetail({ data, onChange }: Props) {
     // local form state
     const [form, setForm] = useState<MOU>(data);
-    const [editing, setEditing] = useState(true); // langsung form aktif
 
     const masaHari = useMemo(() => daysBetween(form.startDate, form.endDate), [form.startDate, form.endDate]);
 
@@ -108,7 +118,6 @@ export function KerjasamaDetail({ data, onChange }: Props) {
     const handleSave = async () => {
         // TODO: panggil API PUT/PATCH di sini
         onChange?.(form);
-        setEditing(true); // tetap form, mengikuti permintaan: detail = form
     };
 
     return (
@@ -286,11 +295,14 @@ export function KerjasamaDetail({ data, onChange }: Props) {
                     />
                 </CardContent>
             </Card>
+
+            {/* Panel Revisi & Diskusi (full width) */}
+            <RevisionPanel />
         </div>
     );
 }
 
-/** ========== Bagian Dokumen (ikon-only trigger + sheet) ========== */
+/* ========== Bagian Dokumen (ikon-only trigger + sheet) ========== */
 function DocRow({
     title,
     file,
@@ -370,7 +382,6 @@ function AddDocButton({
         <TooltipProvider delayDuration={150}>
             <Tooltip>
                 <Sheet open={open} onOpenChange={setOpen}>
-                    {/* Satu trigger saja: Tooltip + Sheet sama-sama asChild */}
                     <SheetTrigger asChild>
                         <TooltipTrigger asChild>
                             <Button
@@ -426,5 +437,236 @@ function AddDocButton({
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>
+    );
+}
+
+/* =================== Panel Revisi & Diskusi (UI-only) =================== */
+
+type ChatRole = 'UNIT' | 'WR';
+type ChatAction = 'COMMENT' | 'REQUEST_CHANGES' | 'APPROVE';
+
+type RevisionMessage = {
+    id: string;
+    author: ChatRole;
+    text: string;
+    createdAt: string; // ISO
+    attachments?: { name: string }[];
+    action: ChatAction;
+};
+
+function RevisionPanel() {
+    // Simulasi role aktif (nanti ganti pakai role dari auth)
+    const [asRole, setAsRole] = useState<ChatRole>('UNIT');
+
+    // Thread dummy
+    const [messages, setMessages] = useState<RevisionMessage[]>([
+        {
+            id: '1',
+            author: 'UNIT',
+            text: 'Halo WR, mohon review dokumen draf ajuan ya.',
+            createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+            action: 'COMMENT',
+        },
+        {
+            id: '2',
+            author: 'WR',
+            text: 'Tolong tambahkan ruang lingkup kegiatan poin “Publikasi Bersama”.',
+            createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+            action: 'REQUEST_CHANGES',
+        },
+    ]);
+
+    const [text, setText] = useState('');
+    const [action, setAction] = useState<ChatAction>('COMMENT');
+    const [attachNames, setAttachNames] = useState<string[]>([]);
+    const fileRef = useRef<HTMLInputElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        // auto scroll ke bawah tiap ada pesan
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    }, [messages.length]);
+
+    const fmtTime = (iso: string) =>
+        new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+
+    const badgeFor = (a: ChatAction) =>
+        a === 'REQUEST_CHANGES'
+            ? <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100"><AlertTriangle className="h-3.5 w-3.5 mr-1" />Request changes</Badge>
+            : a === 'APPROVE'
+                ? <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100"><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Approved</Badge>
+                : <Badge variant="secondary">Komentar</Badge>;
+
+    const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        setAttachNames(files.map(f => f.name));
+    };
+
+    const send = () => {
+        if (!text.trim() && attachNames.length === 0) return;
+        const msg: RevisionMessage = {
+            id: crypto.randomUUID(),
+            author: asRole,
+            text: text.trim(),
+            createdAt: new Date().toISOString(),
+            attachments: attachNames.map(n => ({ name: n })),
+            action,
+        };
+        setMessages(prev => [...prev, msg]);
+        setText('');
+        setAttachNames([]);
+        if (fileRef.current) fileRef.current.value = '';
+    };
+
+    return (
+        <Card className="lg:col-span-3">
+            <CardHeader className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <MessageSquare className="h-5 w-5" />
+                        Revisi & Diskusi
+                    </CardTitle>
+
+                    {/* Toggle role (demo) */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Kirim sebagai:</span>
+                        <div className="flex gap-1">
+                            <Button
+                                variant={asRole === 'UNIT' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setAsRole('UNIT')}
+                            >
+                                UNIT
+                            </Button>
+                            <Button
+                                variant={asRole === 'WR' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setAsRole('WR')}
+                            >
+                                WR
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+                {/* Thread */}
+                <div
+                    ref={scrollRef}
+                    className="max-h-96 overflow-y-auto rounded-md border p-3 bg-muted/30"
+                >
+                    <div className="space-y-3">
+                        {messages.map((m) => {
+                            const mine = m.author === asRole; // untuk alignment di demo
+                            return (
+                                <div
+                                    key={m.id}
+                                    className={`flex ${mine ? 'justify-end' : 'justify-start'}`}
+                                >
+                                    <div
+                                        className={`max-w-[85%] rounded-lg border p-3 text-sm shadow-sm
+                    ${mine ? 'bg-primary text-primary-foreground' : 'bg-white'}
+                  `}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="font-medium">
+                                                {m.author === 'WR' ? 'WR' : 'Unit Pengaju'}
+                                            </div>
+                                            <div className="text-[11px] opacity-75">{fmtTime(m.createdAt)}</div>
+                                        </div>
+
+                                        <div className="mt-1 whitespace-pre-wrap">
+                                            {m.text || <span className="opacity-70">(lampiran saja)</span>}
+                                        </div>
+
+                                        <div className="mt-2">{badgeFor(m.action)}</div>
+
+                                        {m.attachments && m.attachments.length > 0 ? (
+                                            <div className="mt-2 space-y-1">
+                                                {m.attachments.map((a, i) => (
+                                                    <div key={i} className="text-xs opacity-90">
+                                                        • {a.name}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Composer */}
+                <div className="rounded-md border p-3">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant={action === 'COMMENT' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setAction('COMMENT')}
+                            >
+                                Komentar
+                            </Button>
+                            <Button
+                                variant={action === 'REQUEST_CHANGES' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setAction('REQUEST_CHANGES')}
+                            >
+                                Request changes
+                            </Button>
+                            <Button
+                                variant={action === 'APPROVE' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setAction('APPROVE')}
+                            >
+                                Approve
+                            </Button>
+                        </div>
+
+                        <Textarea
+                            placeholder={
+                                action === 'REQUEST_CHANGES'
+                                    ? 'Tulis permintaan revisi…'
+                                    : action === 'APPROVE'
+                                        ? 'Opsional: catatan persetujuan…'
+                                        : 'Tulis komentar…'
+                            }
+                            value={text}
+                            onChange={(e) => setText(e.target.value)}
+                            rows={3}
+                        />
+
+                        {/* Attach */}
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+                                    <Paperclip className="h-4 w-4 mr-2" />
+                                    Lampirkan
+                                </Button>
+                                <input
+                                    ref={fileRef}
+                                    type="file"
+                                    multiple
+                                    className="hidden"
+                                    onChange={onPickFiles}
+                                />
+                                {attachNames.length > 0 && (
+                                    <span className="text-xs text-muted-foreground">
+                                        {attachNames.length} file dipilih
+                                    </span>
+                                )}
+                            </div>
+
+                            <Button onClick={send}>
+                                <Send className="h-4 w-4 mr-2" />
+                                Kirim
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
     );
 }

@@ -585,12 +585,6 @@ function DocRow({
             {/* Header: judul kiri, tombol kanan */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <h4 className="text-sm font-medium">{title}</h4>
-                <div className="sm:shrink-0">
-                    <AddDocButton
-                        isEdit={isEdit}
-                        onSave={(payload) => onAdd(payload)}
-                    />
-                </div>
             </div>
 
             {/* Aksi dokumen */}
@@ -624,91 +618,6 @@ function DocRow({
                 {!file && !url ? <span className={emptyClass}>Tidak Ada</span> : null}
             </div>
         </div>
-    );
-}
-
-
-
-// ===== Tombol tambah/ubah per dokumen (isi link &/atau upload file) =====
-function AddDocButton({
-    isEdit,
-    onSave,
-}: {
-    isEdit: boolean;
-    onSave: (payload: { linkUrl: string | null; file: DocFile }) => void;
-}) {
-    const [open, setOpen] = useState(false);
-    const [linkUrl, setLinkUrl] = useState('');
-    const [file, setFile] = useState<File | null>(null);
-
-    const pickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFile(e.target.files?.[0] || null);
-    };
-
-    const handleSave = () => {
-        const fileData: DocFile = file ? { name: file.name, url: URL.createObjectURL(file) } : null;
-        onSave({ linkUrl: linkUrl.trim() ? linkUrl.trim() : null, file: fileData });
-        setOpen(false);
-        setTimeout(() => { setLinkUrl(''); setFile(null); }, 0);
-    };
-
-    return (
-        <TooltipProvider delayDuration={150}>
-            <Tooltip>
-                <Sheet open={open} onOpenChange={setOpen}>
-                    {/* Penting: keduanya asChild ke elemen yang sama (Button) */}
-                    <SheetTrigger asChild>
-                        <TooltipTrigger asChild>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-full"
-                                aria-label={isEdit ? 'Ubah Dokumen' : 'Tambah Dokumen'}
-                            >
-                                {isEdit ? <Pencil className="h-4 w-4" /> : <FilePlus2 className="h-4 w-4" />}
-                            </Button>
-                        </TooltipTrigger>
-                    </SheetTrigger>
-
-                    <SheetContent className="w-full sm:max-w-md">
-                        <SheetHeader>
-                            <SheetTitle>Tambah/Ubah Dokumen</SheetTitle>
-                        </SheetHeader>
-
-                        <div className="mt-4 space-y-4">
-                            <div className="grid gap-2">
-                                <label className="text-sm font-medium">Masukkan Link (opsional)</label>
-                                <Input
-                                    placeholder="https://contoh.com/dokumen.pdf"
-                                    value={linkUrl}
-                                    onChange={(e) => setLinkUrl(e.target.value)}
-                                />
-                            </div>
-
-                            <div className="grid gap-2">
-                                <label className="text-sm font-medium">Upload Dokumen (opsional)</label>
-                                <Input
-                                    type="file"
-                                    accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
-                                    onChange={pickFile}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Prototype: file disimpan sementara sebagai Blob URL di browser.
-                                </p>
-                            </div>
-                        </div>
-
-                        <SheetFooter className="mt-6">
-                            <Button onClick={handleSave}>Simpan</Button>
-                        </SheetFooter>
-                    </SheetContent>
-                </Sheet>
-
-                <TooltipContent>
-                    {isEdit ? 'Ubah Dokumen' : 'Tambah Dokumen'}
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
     );
 }
 
