@@ -29,12 +29,8 @@ import {
     ChevronLeft,
     ChevronRight,
     ExternalLink,
-    PlusCircle,
-    Download as DownloadIcon,
     Eye,
     FileDown,
-    Pencil,
-    FilePlus2,
 } from 'lucide-react';
 import { getAuth } from '@/lib/proto/auth';
 import Link from 'next/link';
@@ -56,12 +52,10 @@ type PartnerInfo = {
 type DocFile = { name: string; url: string } | null;
 
 type Documents = {
-    // URL/link (tetap untuk kompatibilitas)
     suratPermohonanUrl?: string | null;
     proposalUrl?: string | null;
     draftAjuanUrl?: string | null;
 
-    // File upload (baru)
     suratPermohonanFile?: DocFile;
     proposalFile?: DocFile;
     draftAjuanFile?: DocFile;
@@ -165,15 +159,12 @@ const initialData: MOU[] = [
         endDate: '2025-08-29',
         status: 'Active',
         documents: {
-            // contoh biasa (hanya link)
             suratPermohonanUrl: '/dokumen/surat-permohonan.pdf',
             proposalUrl: null,
-
-            // === CONTOH YANG DIMINTA: DRAF AJUAN PUNYA LINK & FILE SEKALIGUS ===
-            draftAjuanUrl: 'https://contoh.com/preview-draf-ajuan', // untuk tombol "Lihat file"
-            draftAjuanFile: {                                      // untuk tombol "Download file"
+            draftAjuanUrl: 'https://contoh.com/preview-draf-ajuan',
+            draftAjuanFile: {
                 name: 'draf-ajuan-contoh.pdf',
-                url: '/dokumen/draf-ajuan-contoh.pdf',               // letakkan file ini di /public/dokumen/
+                url: '/dokumen/draf-ajuan-contoh.pdf',
             },
         },
         processStatus: 'Pengajuan Unit Ke LKI',
@@ -181,7 +172,6 @@ const initialData: MOU[] = [
         statusNote: '',
     },
 ];
-
 
 // ============== Page ==============
 export default function MOUPage() {
@@ -193,7 +183,6 @@ export default function MOUPage() {
     // ===== Role handling (prototype) =====
     const [role, setRole] = useState<Role | null>(null);
 
-    // ambil dari proto_auth & sinkron antar tab
     useEffect(() => {
         const u = getAuth();
         setRole(u?.role ?? null);
@@ -213,7 +202,6 @@ export default function MOUPage() {
     // filters
     const [q, setQ] = useState('');
     const [status, setStatus] = useState<MOUStatus | 'all'>('all');
-    const [partner, setPartner] = useState<string | 'all'>('all');
     const [level, setLevel] = useState<MOULevel | 'all'>('all');
 
     // pagination (client-side)
@@ -227,8 +215,6 @@ export default function MOUPage() {
         }, 250);
         return () => clearTimeout(t);
     }, []);
-
-    const partners = useMemo(() => Array.from(new Set(rows.map((d) => d.partner))).sort(), [rows]);
 
     const filtered = useMemo(() => {
         const txt = q.trim().toLowerCase();
@@ -249,12 +235,13 @@ export default function MOUPage() {
                     .join(' ')
                     .toLowerCase()
                     .includes(txt);
+
             const matchStatus = status === 'all' || d.status === status;
-            const matchPartner = partner === 'all' || d.partner === partner;
             const matchLevel = level === 'all' || d.level === level;
-            return matchQ && matchStatus && matchPartner && matchLevel;
+
+            return matchQ && matchStatus && matchLevel;
         });
-    }, [rows, q, status, partner, level]);
+    }, [rows, q, status, level]);
 
     const total = filtered.length;
     const start = (page - 1) * limit;
@@ -271,37 +258,11 @@ export default function MOUPage() {
         return { total: rows.length, active, expiring, expired };
     }, [rows]);
 
-    // handler tambah dari sheet
+    // handler tambah dari sheet (masih ada kalau role boleh create)
     const handleCreate = (m: Omit<MOU, 'id'>) => {
         const nextId = `${m.level}-${String(rows.length + 1).padStart(3, '0')}`;
         setRows((prev) => [{ id: nextId, ...m }, ...prev]);
         setPage(1);
-    };
-
-    // ==== helper update dua jenis data: link & file untuk 1 dokumen ====
-    type DocPrefix = 'suratPermohonan' | 'proposal' | 'draftAjuan';
-    const updateDoc = (
-        rowId: string,
-        prefix: DocPrefix,
-        payload: { linkUrl: string | null; file: DocFile }
-    ) => {
-        const urlKey = (prefix + 'Url') as keyof Documents;
-        const fileKey = (prefix + 'File') as keyof Documents;
-
-        setRows((prev) =>
-            prev.map((d) =>
-                d.id === rowId
-                    ? {
-                        ...d,
-                        documents: {
-                            ...(d.documents || {}),
-                            [urlKey]: payload.linkUrl,
-                            [fileKey]: payload.file,
-                        },
-                    }
-                    : d
-            )
-        );
     };
 
     return (
@@ -339,7 +300,13 @@ export default function MOUPage() {
                                 />
                             </div>
 
-                            <Select onValueChange={(v) => { setPage(1); setLevel(v as any); }} defaultValue="all">
+                            <Select
+                                onValueChange={(v) => {
+                                    setPage(1);
+                                    setLevel(v as any);
+                                }}
+                                defaultValue="all"
+                            >
                                 <SelectTrigger className="w-[140px]">
                                     <SelectValue placeholder="Jenis Kerjasama" />
                                 </SelectTrigger>
@@ -351,7 +318,13 @@ export default function MOUPage() {
                                 </SelectContent>
                             </Select>
 
-                            <Select onValueChange={(v) => { setPage(1); setStatus(v as any); }} defaultValue="all">
+                            <Select
+                                onValueChange={(v) => {
+                                    setPage(1);
+                                    setStatus(v as any);
+                                }}
+                                defaultValue="all"
+                            >
                                 <SelectTrigger className="w-[150px]">
                                     <SelectValue placeholder="Status" />
                                 </SelectTrigger>
@@ -364,26 +337,11 @@ export default function MOUPage() {
                                     <SelectItem value="Terminated">Terminated</SelectItem>
                                 </SelectContent>
                             </Select>
-
-                            <Select onValueChange={(v) => { setPage(1); setPartner(v as any); }} defaultValue="all">
-                                <SelectTrigger className="w-[220px]">
-                                    <SelectValue placeholder="Mitra" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Semua mitra</SelectItem>
-                                    {partners.map((p) => (
-                                        <SelectItem key={p} value={p}>
-                                            {p}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
                         </div>
 
                         <div className="flex items-center gap-2">
                             <Button variant="outline">Filter Lanjutan</Button>
 
-                            {/* Create button: hanya role ≠ WR yang bisa buat */}
                             {canCreate ? (
                                 <NewMOUButton onCreate={handleCreate} />
                             ) : (
@@ -417,7 +375,6 @@ export default function MOUPage() {
                             <p className="text-muted-foreground">Memuat data…</p>
                         ) : (
                             <>
-                                {/* >>> Perubahan utama: wrapper scroll horizontal + min-width di tabel <<< */}
                                 <div className="relative overflow-x-auto rounded-md border">
                                     <Table className="min-w-[1200px]">
                                         <TableHeader>
@@ -433,7 +390,6 @@ export default function MOUPage() {
                                                 <TableHead>Dokumen</TableHead>
                                                 <TableHead>Status Proses</TableHead>
                                                 <TableHead>Catatan Status</TableHead>
-                                                {/* ⬇️ Tambahan baru */}
                                                 <TableHead className="text-right">Aksi</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -446,7 +402,12 @@ export default function MOUPage() {
                                                         <TableRow key={row.id} className="align-top">
                                                             <TableCell>{start + idx + 1}</TableCell>
                                                             <TableCell>
-                                                                <a className="font-medium text-blue-600 hover:underline" href={row.fileUrl || '#'} target="_blank" rel="noreferrer">
+                                                                <a
+                                                                    className="font-medium text-blue-600 hover:underline"
+                                                                    href={row.fileUrl || '#'}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                >
                                                                     {row.title}
                                                                 </a>
                                                             </TableCell>
@@ -461,50 +422,72 @@ export default function MOUPage() {
                                                             <TableCell>{fmtDate(row.entryDate)}</TableCell>
                                                             <TableCell>
                                                                 <div className="text-sm">
-                                                                    {row.partnerInfo?.phone ? <>Telepon / HP Pengaju:<br />{row.partnerInfo.phone}<br /></> : null}
-                                                                    {row.partnerInfo?.email ? <>Email Pengaju:<br /><a className="text-blue-600 hover:underline" href={`mailto:${row.partnerInfo.email}`}>{row.partnerInfo.email}</a></> : null}
+                                                                    {row.partnerInfo?.phone ? (
+                                                                        <>
+                                                                            Telepon / HP Pengaju:<br />
+                                                                            {row.partnerInfo.phone}
+                                                                            <br />
+                                                                        </>
+                                                                    ) : null}
+                                                                    {row.partnerInfo?.email ? (
+                                                                        <>
+                                                                            Email Pengaju:
+                                                                            <br />
+                                                                            <a
+                                                                                className="text-blue-600 hover:underline"
+                                                                                href={`mailto:${row.partnerInfo.email}`}
+                                                                            >
+                                                                                {row.partnerInfo.email}
+                                                                            </a>
+                                                                        </>
+                                                                    ) : null}
                                                                 </div>
                                                             </TableCell>
                                                             <TableCell className="uppercase">{row.faculty || row.unit}</TableCell>
                                                             <TableCell>
                                                                 <ul className="text-sm list-disc pl-4">
-                                                                    {row.scope.map((s) => <li key={s}>*{s}</li>)}
+                                                                    {row.scope.map((s) => (
+                                                                        <li key={s}>*{s}</li>
+                                                                    ))}
                                                                 </ul>
                                                             </TableCell>
                                                             <TableCell>
                                                                 <div className="text-sm space-y-1">
-                                                                    <div>Tanggal Mulai<br /><DateBadge date={row.startDate} /></div>
-                                                                    <div>Tanggal Berakhir<br /><DateBadge date={row.endDate} /></div>
-                                                                    <div className="pt-1">Masa Berlaku : {masaHari.toString().padStart(2, '0')} Hari</div>
+                                                                    <div>
+                                                                        Tanggal Mulai
+                                                                        <br />
+                                                                        <DateBadge date={row.startDate} />
+                                                                    </div>
+                                                                    <div>
+                                                                        Tanggal Berakhir
+                                                                        <br />
+                                                                        <DateBadge date={row.endDate} />
+                                                                    </div>
+                                                                    <div className="pt-1">
+                                                                        Masa Berlaku : {masaHari.toString().padStart(2, '0')} Hari
+                                                                    </div>
                                                                 </div>
                                                             </TableCell>
 
-                                                            {/* ==== DOKUMEN: now shows BOTH actions when both exist ==== */}
                                                             <TableCell>
                                                                 <div className="text-sm space-y-4">
-                                                                    {/* Surat Permohonan */}
                                                                     <DocRow
                                                                         title="Dokumen Surat Permohonan"
                                                                         file={row.documents?.suratPermohonanFile || null}
                                                                         url={row.documents?.suratPermohonanUrl || null}
-                                                                        onAdd={(payload) => updateDoc(row.id, 'suratPermohonan', payload)}
                                                                     />
 
-                                                                    {/* Proposal */}
                                                                     <DocRow
                                                                         title="Dokumen Proposal"
                                                                         file={row.documents?.proposalFile || null}
                                                                         url={row.documents?.proposalUrl || null}
-                                                                        onAdd={(payload) => updateDoc(row.id, 'proposal', payload)}
                                                                         emptyClass="text-rose-600"
                                                                     />
 
-                                                                    {/* Draft Ajuan */}
                                                                     <DocRow
                                                                         title="Dokumen Draf Ajuan"
                                                                         file={row.documents?.draftAjuanFile || null}
                                                                         url={row.documents?.draftAjuanUrl || null}
-                                                                        onAdd={(payload) => updateDoc(row.id, 'draftAjuan', payload)}
                                                                     />
                                                                 </div>
                                                             </TableCell>
@@ -514,7 +497,9 @@ export default function MOUPage() {
                                                                     <div>{row.processStatus || '-'}</div>
                                                                     <div className="text-sm">
                                                                         Status Persetujuan :{' '}
-                                                                        <span className="font-medium text-rose-600">{row.approvalStatus || '-'}</span>
+                                                                        <span className="font-medium text-rose-600">
+                                                                            {row.approvalStatus || '-'}
+                                                                        </span>
                                                                     </div>
                                                                 </div>
                                                             </TableCell>
@@ -560,7 +545,7 @@ export default function MOUPage() {
                     </CardContent>
                 </Card>
             </div>
-        </ContentLayout >
+        </ContentLayout>
     );
 }
 
@@ -569,32 +554,22 @@ function DocRow({
     title,
     file,
     url,
-    onAdd,
     emptyClass = 'text-muted-foreground',
 }: {
     title: string;
     file: DocFile;
     url: string | null;
-    onAdd: (payload: { linkUrl: string | null; file: DocFile }) => void;
     emptyClass?: string;
 }) {
-    const isEdit = Boolean(file || url);
-
     return (
         <div className="space-y-2">
-            {/* Header: judul kiri, tombol kanan */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <h4 className="text-sm font-medium">{title}</h4>
             </div>
 
-            {/* Aksi dokumen */}
             <div className="space-y-1">
                 {file ? (
-                    <a
-                        className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                        href={file.url}
-                        download={file.name || 'dokumen.pdf'}
-                    >
+                    <a className="inline-flex items-center gap-1 text-blue-600 hover:underline" href={file.url} download={file.name || 'dokumen.pdf'}>
                         <FileDown className="h-3.5 w-3.5" />
                         Download file
                     </a>
@@ -602,13 +577,7 @@ function DocRow({
 
                 {url ? (
                     <div>
-                        <a
-                            className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                            href={url}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={url}
-                        >
+                        <a className="inline-flex items-center gap-1 text-blue-600 hover:underline" href={url} target="_blank" rel="noreferrer" title={url}>
                             <ExternalLink className="h-3.5 w-3.5" />
                             Lihat file
                         </a>
@@ -621,13 +590,10 @@ function DocRow({
     );
 }
 
-
-
 // ============== Create Sheet (UI-only) — HANYA FIELD YANG ADA DI TABEL ==============
 function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) {
     const [open, setOpen] = useState(false);
 
-    // field sesuai kolom tabel
     const [level, setLevel] = useState<MOULevel | undefined>();
     const [documentNumber, setDocumentNumber] = useState('');
     const [title, setTitle] = useState('');
@@ -646,7 +612,6 @@ function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) 
     const [statusNote, setStatusNote] = useState('');
     const [fileUrl, setFileUrl] = useState('');
 
-    // validasi minimal
     const canSave = level && title.trim() && entryDate && faculty.trim() && startDate && endDate;
 
     const handleSave = () => {
@@ -666,7 +631,7 @@ function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) 
             country: 'Indonesia',
             faculty: faculty.trim(),
             unit: faculty.trim(),
-            scope: scopeStr.split(',').map(s => s.trim()).filter(Boolean),
+            scope: scopeStr.split(',').map((s) => s.trim()).filter(Boolean),
             category: 'Cooperation',
             department: '-',
             owner: '-',
@@ -677,7 +642,6 @@ function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) 
                 suratPermohonanUrl: suratPermohonanUrl.trim() || null,
                 proposalUrl: proposalUrl.trim() || null,
                 draftAjuanUrl: draftAjuanUrl.trim() || null,
-                // file* kosong di create awal (ditambah via AddDocButton)
             },
             processStatus: processStatus.trim() || undefined,
             approvalStatus: approvalStatus.trim() || undefined,
@@ -714,7 +678,9 @@ function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) 
                         <div className="grid gap-2">
                             <label className="text-sm font-medium">Jenis Kerjasama</label>
                             <Select value={level} onValueChange={(v) => setLevel(v as MOULevel)}>
-                                <SelectTrigger><SelectValue placeholder="Pilih" /></SelectTrigger>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Pilih" />
+                                </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="MOU">MOU</SelectItem>
                                     <SelectItem value="MOA">MOA</SelectItem>
@@ -811,7 +777,7 @@ function StatCard({
     title,
     value,
     subtitle,
-    icon
+    icon,
 }: {
     title: string;
     value: number | string;
