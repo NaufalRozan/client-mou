@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { getAuth } from '@/lib/proto/auth';
 import Link from 'next/link';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // ================= Roles =================
 type Role = 'LEMBAGA_KERJA_SAMA' | 'FAKULTAS' | 'PRODI' | 'ORANG_LUAR' | 'WR';
@@ -89,6 +90,9 @@ type MOU = {
     statusNote?: string;
     fileUrl?: string;
     notes?: string;
+
+    /** ⬇️ baru: relasi opsional ke dokumen lain (ID) */
+    relatedIds?: string[];
 };
 
 // ============== Helpers ==============
@@ -136,7 +140,35 @@ const DateBadge = ({ date }: { date: string }) => (
 );
 
 // ============== Dummy data awal ==============
+// ============== Dummy data awal ==============
 const initialData: MOU[] = [
+    {
+        id: 'MOU-001',
+        level: 'MOU',
+        documentNumber: 'MOU/UMY/2025/01',
+        title: 'KERJASAMA PENELITIAN DAN PERTUKARAN MAHASISWA',
+        entryDate: '2025-07-10',
+        partner: 'Universitas A',
+        partnerType: 'Universitas',
+        country: 'Indonesia',
+        faculty: 'TEKNIK',
+        scope: ['Nasional'],
+        category: 'Cooperation',
+        department: 'LKI',
+        owner: 'Unit Teknik',
+        startDate: '2025-07-15',
+        endDate: '2027-07-15',
+        status: 'Active',
+        documents: {
+            suratPermohonanUrl: '/dokumen/mou-001-surat.pdf',
+            proposalUrl: '/dokumen/mou-001-proposal.pdf',
+            draftAjuanUrl: null,
+        },
+        processStatus: 'Ditandatangani',
+        approvalStatus: 'Disetujui',
+        statusNote: '',
+        relatedIds: [],
+    },
     {
         id: 'MOA-001',
         level: 'MOA',
@@ -170,8 +202,37 @@ const initialData: MOU[] = [
         processStatus: 'Pengajuan Unit Ke LKI',
         approvalStatus: 'Menunggu Persetujuan',
         statusNote: '',
+        relatedIds: ['MOU-001'], // contoh relasi ke MOU
+    },
+    {
+        id: 'IA-001',
+        level: 'IA',
+        documentNumber: 'IA/2025/05',
+        title: 'IMPLEMENTASI PELATIHAN BERSAMA INDUSTRI XYZ',
+        entryDate: '2025-09-01',
+        partner: 'PT Industri XYZ',
+        partnerType: 'Industri',
+        country: 'Indonesia',
+        faculty: 'EKONOMI',
+        scope: ['Lokal'],
+        category: 'Academic',
+        department: 'LKI',
+        owner: 'Fakultas Ekonomi',
+        startDate: '2025-09-05',
+        endDate: '2026-09-05',
+        status: 'Draft',
+        documents: {
+            suratPermohonanUrl: null,
+            proposalUrl: null,
+            draftAjuanUrl: null,
+        },
+        processStatus: 'Penyusunan draft',
+        approvalStatus: 'Belum Disetujui',
+        statusNote: 'Menunggu dokumen tambahan',
+        relatedIds: ['MOU-001'], // contoh relasi ke MOU
     },
 ];
+
 
 // ============== Page ==============
 export default function MOUPage() {
@@ -258,7 +319,7 @@ export default function MOUPage() {
         return { total: rows.length, active, expiring, expired };
     }, [rows]);
 
-    // handler tambah dari sheet (masih ada kalau role boleh create)
+    // handler tambah dari sheet
     const handleCreate = (m: Omit<MOU, 'id'>) => {
         const nextId = `${m.level}-${String(rows.length + 1).padStart(3, '0')}`;
         setRows((prev) => [{ id: nextId, ...m }, ...prev]);
@@ -290,7 +351,7 @@ export default function MOUPage() {
                             <div className="relative w-full max-w-sm">
                                 <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Cari judul/mitra/no dokumen…"
+                                    placeholder="Cari judul/no dokumen…"
                                     className="pl-8"
                                     value={q}
                                     onChange={(e) => {
@@ -343,7 +404,7 @@ export default function MOUPage() {
                             <Button variant="outline">Filter Lanjutan</Button>
 
                             {canCreate ? (
-                                <NewMOUButton onCreate={handleCreate} />
+                                <NewMOUButton onCreate={handleCreate} optionsRows={rows} />
                             ) : (
                                 <TooltipProvider delayDuration={150}>
                                     <Tooltip>
@@ -398,19 +459,38 @@ export default function MOUPage() {
                                             {pageRows.length ? (
                                                 pageRows.map((row, idx) => {
                                                     const masaHari = daysBetween(row.startDate, row.endDate);
+                                                    const related = (row.relatedIds || [])
+                                                        .map(id => rows.find(r => r.id === id))
+                                                        .filter(Boolean) as MOU[];
                                                     return (
                                                         <TableRow key={row.id} className="align-top">
                                                             <TableCell>{start + idx + 1}</TableCell>
                                                             <TableCell>
-                                                                <a
-                                                                    className="font-medium text-blue-600 hover:underline"
-                                                                    href={row.fileUrl || '#'}
-                                                                    target="_blank"
-                                                                    rel="noreferrer"
-                                                                >
-                                                                    {row.title}
-                                                                </a>
+                                                                <div className="space-y-1">
+                                                                    <a
+                                                                        className="font-medium text-blue-600 hover:underline"
+                                                                        href={row.fileUrl || '#'}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                    >
+                                                                        {row.title}
+                                                                    </a>
+
+                                                                    {/* Badge relasi (opsional) */}
+                                                                    {related.length > 0 && (
+                                                                        <div className="flex flex-wrap gap-1 pt-1">
+                                                                            {related.map(r => (
+                                                                                <Badge key={r.id} variant="outline" className="text-xs">
+                                                                                    <Link href={`/data-ajuan/${encodeURIComponent(r.id)}`} className="hover:underline">
+                                                                                        Terkait: {r.level}-{r.id.split('-')[1] ?? r.id}
+                                                                                    </Link>
+                                                                                </Badge>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             </TableCell>
+
                                                             <TableCell>
                                                                 <div className="space-y-1">
                                                                     <div className="font-medium">{row.level}</div>
@@ -433,10 +513,7 @@ export default function MOUPage() {
                                                                         <>
                                                                             Email Pengaju:
                                                                             <br />
-                                                                            <a
-                                                                                className="text-blue-600 hover:underline"
-                                                                                href={`mailto:${row.partnerInfo.email}`}
-                                                                            >
+                                                                            <a className="text-blue-600 hover:underline" href={`mailto:${row.partnerInfo.email}`}>
                                                                                 {row.partnerInfo.email}
                                                                             </a>
                                                                         </>
@@ -590,10 +667,20 @@ function DocRow({
     );
 }
 
-// ============== Create Sheet (UI-only) — HANYA FIELD YANG ADA DI TABEL ==============
-function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) {
+/** ========================================================================
+ *  NewMOUButton: tambah “Relasi Dokumen” (opsional) dengan checkbox list
+ *  ===================================================================== */
+function NewMOUButton({
+    onCreate,
+    optionsRows,
+}: {
+    onCreate: (m: Omit<MOU, 'id'>) => void;
+    /** daftar dokumen yang sudah ada, untuk dipilih sebagai relasi */
+    optionsRows: MOU[];
+}) {
     const [open, setOpen] = useState(false);
 
+    // field sesuai kolom tabel
     const [level, setLevel] = useState<MOULevel | undefined>();
     const [documentNumber, setDocumentNumber] = useState('');
     const [title, setTitle] = useState('');
@@ -612,10 +699,48 @@ function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) 
     const [statusNote, setStatusNote] = useState('');
     const [fileUrl, setFileUrl] = useState('');
 
+    // relasi (opsional)
+    const [relatedSearch, setRelatedSearch] = useState('');
+    const [relatedIds, setRelatedIds] = useState<string[]>([]);
+
     const canSave = level && title.trim() && entryDate && faculty.trim() && startDate && endDate;
+
+    const toggleRelated = (id: string) => {
+        setRelatedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+    };
+
+    // di dalam NewMOUButton
+    const listFiltered = useMemo(() => {
+        const t = relatedSearch.trim().toLowerCase();
+
+        // Jika belum pilih level, tampilkan kosong/atau semua (di sini kita tampilkan semua)
+        const base = optionsRows.filter(r => {
+            // filter teks
+            const textMatch = !t || [r.id, r.title, r.level, r.documentNumber]
+                .join(' ')
+                .toLowerCase()
+                .includes(t);
+
+            // filter beda jenis (kalau level belum dipilih, jangan batasi)
+            const typeMatch = level ? r.level !== level : true;
+
+            return textMatch && typeMatch;
+        });
+
+        return base;
+    }, [optionsRows, relatedSearch, level]);
+
 
     const handleSave = () => {
         if (!canSave) return;
+
+        // amankan relasi: hanya dokumen yang level-nya berbeda dari level yang dipilih
+        const sanitizedRelated = relatedIds.filter(id => {
+            const r = optionsRows.find(x => x.id === id);
+            if (!r) return false;
+            if (!level) return true; // kalau level belum dipilih, izinkan (tapi normalnya level sudah wajib diisi)
+            return r.level !== level;
+        });
 
         const payload: Omit<MOU, 'id'> = {
             level: level!,
@@ -631,7 +756,7 @@ function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) 
             country: 'Indonesia',
             faculty: faculty.trim(),
             unit: faculty.trim(),
-            scope: scopeStr.split(',').map((s) => s.trim()).filter(Boolean),
+            scope: scopeStr.split(',').map(s => s.trim()).filter(Boolean),
             category: 'Cooperation',
             department: '-',
             owner: '-',
@@ -652,11 +777,15 @@ function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) 
             signDate: undefined,
             studyProgram: undefined,
             notes: undefined,
+
+            // gunakan hasil sanitasi
+            relatedIds: sanitizedRelated.length ? sanitizedRelated : undefined,
         };
 
         onCreate(payload);
         setOpen(false);
     };
+
 
     return (
         <Sheet open={open} onOpenChange={setOpen}>
@@ -760,6 +889,89 @@ function NewMOUButton({ onCreate }: { onCreate: (m: Omit<MOU, 'id'>) => void }) 
                         <label className="text-sm font-medium">Lampiran Umum (URL) — untuk link pada kolom “Tentang”</label>
                         <Input placeholder="https://.../dokumen.pdf" value={fileUrl} onChange={(e) => setFileUrl(e.target.value)} />
                     </div>
+
+                    {/* =================== Relasi Dokumen (opsional) =================== */}
+                    <div className="grid gap-3 border-t pt-4">
+                        <label className="text-sm font-semibold">
+                            Hubungkan dengan dokumen lain (opsional)
+                        </label>
+
+                        {/* Input + hint responsif */}
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                            <Input
+                                placeholder="Cari ID/Judul/Jenis…"
+                                value={relatedSearch}
+                                onChange={(e) => setRelatedSearch(e.target.value)}
+                                className="w-full sm:max-w-sm"
+                            />
+                            <span className="text-xs text-muted-foreground sm:ml-auto">
+                                Bisa pilih lebih dari satu
+                            </span>
+                        </div>
+
+                        {/* List kandidat responsif */}
+                        <div className="rounded-md border">
+                            <ul className="max-h-64 overflow-y-auto divide-y">
+                                {listFiltered.length === 0 ? (
+                                    <li className="p-3 text-xs text-muted-foreground">Tidak ada kandidat.</li>
+                                ) : (
+                                    listFiltered.map((item) => {
+                                        const checked = relatedIds.includes(item.id);
+                                        return (
+                                            <li key={item.id} className="hover:bg-muted/50">
+                                                <label className="grid grid-cols-[auto,1fr] items-start gap-3 p-2 cursor-pointer">
+                                                    {/* Checkbox konsisten ukurannya di semua browser */}
+                                                    <Checkbox
+                                                        checked={checked}
+                                                        onCheckedChange={() => toggleRelated(item.id)}
+                                                        className="mt-0.5 h-4 w-4"   // paksa ukuran konsisten
+                                                        aria-label={`Pilih ${item.id}`}
+                                                    />
+
+                                                    {/* Konten kanan responsif */}
+                                                    <div className="min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <Badge variant="secondary" className="shrink-0">
+                                                                {item.level}
+                                                            </Badge>
+                                                            <span className="font-medium shrink-0">{item.id}</span>
+                                                            {/* judul bisa panjang: truncate di layar kecil */}
+                                                            <span className="text-muted-foreground truncate sm:whitespace-normal sm:truncate-0">
+                                                                — {item.title}
+                                                            </span>
+                                                        </div>
+                                                        {/* Info tambahan kecil (opsional) */}
+                                                        <div className="mt-0.5 text-[11px] text-muted-foreground">
+                                                            {item.documentNumber || 'Tanpa nomor dokumen'}
+                                                        </div>
+                                                    </div>
+                                                </label>
+                                            </li>
+                                        );
+                                    })
+                                )}
+                            </ul>
+                        </div>
+
+                        {relatedIds.length > 0 && (
+                            <div className="pt-2">
+                                <div className="text-xs mb-1 text-muted-foreground">Terpilih:</div>
+                                <div className="flex flex-wrap gap-1">
+                                    {relatedIds.map((id) => {
+                                        const r = optionsRows.find((x) => x.id === id);
+                                        if (!r) return null;
+                                        return (
+                                            <Badge key={id} variant="outline" className="text-xs">
+                                                {r.level}-{id.split('-')[1] ?? id}
+                                            </Badge>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* =================== /Relasi Dokumen =================== */}
                 </div>
 
                 <SheetFooter className="mt-6">
