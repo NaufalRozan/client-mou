@@ -299,10 +299,6 @@ export default function DataBerjalanPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-
-                        <Button asChild variant="outline">
-                            <Link href="/data-ajuan">Ke Data Ajuan (Pending)</Link>
-                        </Button>
                     </CardContent>
                 </Card>
 
