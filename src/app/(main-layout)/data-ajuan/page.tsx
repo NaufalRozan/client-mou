@@ -292,14 +292,6 @@ export default function DataAjuanPage() {
     return (
         <ContentLayout title="Data Ajuan (Pending/Belum ACC WR)">
             {/* Header simple (tanpa dashboard) */}
-            <div className="mt-2 flex items-center gap-2">
-                <Badge variant="secondary">Role: {role ? role.replaceAll('_', ' ') : '—'}</Badge>
-
-                <Button asChild variant="outline" className="ml-auto">
-                    <Link href="/data-berjalan">Lihat Data Berjalan (Sudah ACC)</Link>
-                </Button>
-            </div>
-
             <div className="mt-6 space-y-6">
                 {/* Filter */}
                 <Card>

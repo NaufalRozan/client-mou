@@ -232,13 +232,6 @@ export default function DataBerjalanPage() {
 
     return (
         <ContentLayout title="Data Berjalan (Sudah ACC WR)">
-            <div className="mt-2 flex items-center gap-2">
-                {/* Tidak ada role di sini; kalau perlu tinggal tambahkan seperti Data Ajuan */}
-                <Button asChild variant="outline" className="ml-auto">
-                    <Link href="/data-ajuan">Kembali ke Data Ajuan (Pending)</Link>
-                </Button>
-            </div>
-
             <div className="mt-6 space-y-6">
                 {/* Info Bar (hitung dari approved saja) */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
