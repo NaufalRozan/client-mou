@@ -33,6 +33,17 @@ export function getMenuList(pathname: string): Group[] {
       groupLabel: "",
       menus: [
         {
+          href: "/data-berjalan",
+          label: "Data Berjalan",
+          icon: LayoutGrid,
+          submenus: []
+        }
+      ]
+    },
+    {
+      groupLabel: "",
+      menus: [
+        {
           href: "/data-ajuan",
           label: "Data Ajuan",
           icon: LayoutGrid,

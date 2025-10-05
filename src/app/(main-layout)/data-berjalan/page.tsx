@@ -1,52 +1,36 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-
 import { ContentLayout } from '@/components/admin-panel/content-layout';
+
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Textarea } from '@/components/ui/textarea';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { Checkbox } from '@/components/ui/checkbox';
 
 import {
     Calendar as CalendarIcon,
     Search,
-    FileSignature,
+    CheckCircle2,
+    AlertTriangle,
+    XCircle,
     ChevronLeft,
     ChevronRight,
     ExternalLink,
     Eye,
     FileDown,
+    FileSignature,
 } from 'lucide-react';
+import Link from 'next/link';
 
-import { getAuth } from '@/lib/proto/auth';
-
-/* ================= Roles ================= */
-type Role = 'LEMBAGA_KERJA_SAMA' | 'FAKULTAS' | 'PRODI' | 'ORANG_LUAR' | 'WR';
-
-/* ================= Types ================= */
+/* ================= Types (samakan dengan Data Ajuan) ================= */
 type MOUStatus = 'Draft' | 'Active' | 'Expiring' | 'Expired' | 'Terminated';
 type MOULevel = 'MOU' | 'MOA' | 'IA';
 type PartnerType = 'Universitas' | 'Industri' | 'Pemerintah' | 'Organisasi';
 
-type PartnerInfo = {
-    phone?: string;
-    email?: string;
-};
-
+type PartnerInfo = { phone?: string; email?: string };
 type DocFile = { name: string; url: string } | null;
 
 type Documents = {
@@ -107,7 +91,7 @@ function DateBadge({ date }: { date: string }) {
     );
 }
 
-/* ============== Dummy data awal (contoh) ============== */
+/* ============== Seed (boleh diganti dari API/shared store) ============== */
 const initialData: MOU[] = [
     {
         id: 'MOU-001',
@@ -132,7 +116,7 @@ const initialData: MOU[] = [
             draftAjuanUrl: null,
         },
         processStatus: 'Ditandatangani',
-        approvalStatus: 'Disetujui', // <- sudah ACC -> TIDAK tampil di halaman ini
+        approvalStatus: 'Disetujui', // <- ini yang akan diambil
         statusNote: '',
         relatedIds: [],
     },
@@ -140,7 +124,8 @@ const initialData: MOU[] = [
         id: 'MOA-001',
         level: 'MOA',
         documentNumber: '—',
-        title: 'PENYELENGGARAAN TRI DHARMA PERGURUAN TINGGI FAKULTAS KEDOKTERAN DAN ILMU KESEHATAN',
+        title:
+            'PENYELENGGARAAN TRI DHARMA PERGURUAN TINGGI FAKULTAS KEDOKTERAN DAN ILMU KESEHATAN',
         entryDate: '2025-08-29',
         partner: '—',
         partnerType: 'Universitas',
@@ -167,46 +152,16 @@ const initialData: MOU[] = [
             },
         },
         processStatus: 'Pengajuan Unit Ke LKI',
-        approvalStatus: 'Menunggu Persetujuan', // <- pending -> TAMPIL
+        approvalStatus: 'Menunggu Persetujuan', // <- tidak akan tampil di halaman berjalan
         statusNote: '',
-        relatedIds: ['MOU-001'],
-    },
-    {
-        id: 'IA-001',
-        level: 'IA',
-        documentNumber: 'IA/2025/05',
-        title: 'IMPLEMENTASI PELATIHAN BERSAMA INDUSTRI XYZ',
-        entryDate: '2025-09-01',
-        partner: 'PT Industri XYZ',
-        partnerType: 'Industri',
-        country: 'Indonesia',
-        faculty: 'EKONOMI',
-        scope: ['Lokal'],
-        category: 'Academic',
-        department: 'LKI',
-        owner: 'Fakultas Ekonomi',
-        startDate: '2025-09-05',
-        endDate: '2026-09-05',
-        status: 'Draft',
-        documents: {
-            suratPermohonanUrl: null,
-            proposalUrl: null,
-            draftAjuanUrl: null,
-        },
-        processStatus: 'Penyusunan draft',
-        approvalStatus: 'Belum Disetujui', // <- pending -> TAMPIL
-        statusNote: 'Menunggu dokumen tambahan',
         relatedIds: ['MOU-001'],
     },
 ];
 
-/* ============== Page ============== */
-export default function DataAjuanPage() {
-    const router = useRouter();
-
+/* ============== Page (Approved Only, UI mengikuti Data Ajuan) ============== */
+export default function DataBerjalanPage() {
     const [loading, setLoading] = useState(true);
     const [rows, setRows] = useState<MOU[]>([]);
-    const [role, setRole] = useState<Role | null>(null);
 
     // filters
     const [q, setQ] = useState('');
@@ -218,22 +173,6 @@ export default function DataAjuanPage() {
     const limit = 10;
 
     useEffect(() => {
-        const u = getAuth();
-        setRole(u?.role ?? null);
-
-        const onStorage = (e: StorageEvent) => {
-            if (e.key === 'proto_auth') {
-                const next = getAuth();
-                setRole(next?.role ?? null);
-            }
-        };
-        window.addEventListener('storage', onStorage);
-        return () => window.removeEventListener('storage', onStorage);
-    }, [router]);
-
-    const canCreate = role !== 'WR';
-
-    useEffect(() => {
         const t = setTimeout(() => {
             setRows(initialData);
             setLoading(false);
@@ -241,15 +180,16 @@ export default function DataAjuanPage() {
         return () => clearTimeout(t);
     }, []);
 
-    // === Hanya data pending: approvalStatus ≠ "Disetujui"
-    const pendingRows = useMemo(() => {
-        return rows.filter((d) => (d.approvalStatus || '').toLowerCase() !== 'disetujui');
-    }, [rows]);
+    // === APPROVED ONLY: basis data hanya yang "Disetujui"
+    const approvedRows = useMemo(
+        () => rows.filter((d) => (d.approvalStatus || '').toLowerCase() === 'disetujui'),
+        [rows]
+    );
 
-    // filter lanjutan
+    // filter lanjutan di atas approvedRows (sama seperti Data Ajuan)
     const filtered = useMemo(() => {
         const txt = q.trim().toLowerCase();
-        return pendingRows.filter((d) => {
+        return approvedRows.filter((d) => {
             const matchQ =
                 txt === '' ||
                 [
@@ -272,7 +212,7 @@ export default function DataAjuanPage() {
 
             return matchQ && matchStatus && matchLevel;
         });
-    }, [pendingRows, q, status, level]);
+    }, [approvedRows, q, status, level]);
 
     // pagination
     const total = filtered.length;
@@ -282,25 +222,32 @@ export default function DataAjuanPage() {
     const canPrev = page > 1;
     const canNext = end < total;
 
-    // create
-    const handleCreate = (m: Omit<MOU, 'id'>) => {
-        const nextId = `${m.level}-${String(rows.length + 1).padStart(3, '0')}`;
-        setRows((prev) => [{ id: nextId, ...m }, ...prev]);
-        setPage(1);
-    };
+    // ringkasan (khusus data approved)
+    const stats = useMemo(() => {
+        const active = approvedRows.filter((d) => d.status === 'Active').length;
+        const expiring = approvedRows.filter((d) => d.status === 'Expiring').length;
+        const expired = approvedRows.filter((d) => d.status === 'Expired').length;
+        return { total: approvedRows.length, active, expiring, expired };
+    }, [approvedRows]);
 
     return (
-        <ContentLayout title="Data Ajuan (Pending/Belum ACC WR)">
-            {/* Header simple (tanpa dashboard) */}
+        <ContentLayout title="Data Berjalan (Sudah ACC WR)">
             <div className="mt-2 flex items-center gap-2">
-                <Badge variant="secondary">Role: {role ? role.replaceAll('_', ' ') : '—'}</Badge>
-
+                {/* Tidak ada role di sini; kalau perlu tinggal tambahkan seperti Data Ajuan */}
                 <Button asChild variant="outline" className="ml-auto">
-                    <Link href="/data-berjalan">Lihat Data Berjalan (Sudah ACC)</Link>
+                    <Link href="/data-ajuan">Kembali ke Data Ajuan (Pending)</Link>
                 </Button>
             </div>
 
             <div className="mt-6 space-y-6">
+                {/* Info Bar (hitung dari approved saja) */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <StatCard title="Total Berjalan" value={stats.total} subtitle="Sudah ACC WR" icon={<FileSignature className="h-5 w-5" />} />
+                    <StatCard title="Active" value={stats.active} subtitle="Status dokumen" icon={<CheckCircle2 className="h-5 w-5" />} />
+                    <StatCard title="Expiring" value={stats.expiring} subtitle="Perlu perhatian" icon={<AlertTriangle className="h-5 w-5" />} />
+                    <StatCard title="Expired" value={stats.expired} subtitle="Butuh tindak lanjut" icon={<XCircle className="h-5 w-5" />} />
+                </div>
+
                 {/* Filter */}
                 <Card>
                     <CardHeader className="pb-3">
@@ -360,36 +307,16 @@ export default function DataAjuanPage() {
                             </Select>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            <Button variant="outline">Filter Lanjutan</Button>
-
-                            {canCreate ? (
-                                <NewMOUButton onCreate={handleCreate} optionsRows={rows} />
-                            ) : (
-                                <TooltipProvider delayDuration={150}>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <span>
-                                                <Button className="gap-2" disabled>
-                                                    <FileSignature className="h-4 w-4" />
-                                                    Tambah
-                                                </Button>
-                                            </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>WR tidak dapat membuat data baru</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
-                            )}
-                        </div>
+                        <Button asChild variant="outline">
+                            <Link href="/data-ajuan">Ke Data Ajuan (Pending)</Link>
+                        </Button>
                     </CardContent>
                 </Card>
 
-                {/* Tabel Pending */}
+                {/* Tabel (approved only) */}
                 <Card>
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-base">Daftar Ajuan (Pending)</CardTitle>
+                        <CardTitle className="text-base">Daftar Dokumen Berjalan</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {loading ? (
@@ -426,7 +353,6 @@ export default function DataAjuanPage() {
                                                     return (
                                                         <TableRow key={row.id} className="align-top">
                                                             <TableCell>{start + idx + 1}</TableCell>
-
                                                             <TableCell>
                                                                 <div className="space-y-1">
                                                                     <a
@@ -438,12 +364,11 @@ export default function DataAjuanPage() {
                                                                         {row.title}
                                                                     </a>
 
-                                                                    {/* relasi */}
                                                                     {related.length > 0 && (
                                                                         <div className="flex flex-wrap gap-1 pt-1">
                                                                             {related.map((r) => (
                                                                                 <Badge key={r.id} variant="outline" className="text-xs">
-                                                                                    <Link href={`/data-ajuan/${encodeURIComponent(r.id)}`} className="hover:underline">
+                                                                                    <Link href={`/data-berjalan/${encodeURIComponent(r.id)}`} className="hover:underline">
                                                                                         Terkait: {r.level}-{r.id.split('-')[1] ?? r.id}
                                                                                     </Link>
                                                                                 </Badge>
@@ -520,14 +445,12 @@ export default function DataAjuanPage() {
                                                                         file={row.documents?.suratPermohonanFile || null}
                                                                         url={row.documents?.suratPermohonanUrl || null}
                                                                     />
-
                                                                     <DocRow
                                                                         title="Dokumen Proposal"
                                                                         file={row.documents?.proposalFile || null}
                                                                         url={row.documents?.proposalUrl || null}
                                                                         emptyClass="text-rose-600"
                                                                     />
-
                                                                     <DocRow
                                                                         title="Dokumen Draf Ajuan"
                                                                         file={row.documents?.draftAjuanFile || null}
@@ -541,9 +464,7 @@ export default function DataAjuanPage() {
                                                                     <div>{row.processStatus || '-'}</div>
                                                                     <div className="text-sm">
                                                                         Status Persetujuan:{' '}
-                                                                        <span className="font-medium text-rose-600">
-                                                                            {row.approvalStatus || '-'}
-                                                                        </span>
+                                                                        <span className="font-medium text-emerald-700">Disetujui</span>
                                                                     </div>
                                                                 </div>
                                                             </TableCell>
@@ -552,7 +473,7 @@ export default function DataAjuanPage() {
 
                                                             <TableCell className="text-right">
                                                                 <Button asChild variant="outline" size="icon" className="h-8 w-8">
-                                                                    <Link href={`/data-ajuan/${encodeURIComponent(row.id)}`} aria-label="Lihat detail">
+                                                                    <Link href={`/data-berjalan/${encodeURIComponent(row.id)}`} aria-label="Lihat detail">
                                                                         <Eye className="h-4 w-4" />
                                                                     </Link>
                                                                 </Button>
@@ -563,7 +484,7 @@ export default function DataAjuanPage() {
                                             ) : (
                                                 <TableRow>
                                                     <TableCell colSpan={12} className="h-24 text-center text-sm text-muted-foreground">
-                                                        Tidak ada data pending.
+                                                        Belum ada dokumen berjalan.
                                                     </TableCell>
                                                 </TableRow>
                                             )}
@@ -635,293 +556,28 @@ function DocRow({
     );
 }
 
-/** ========================================================================
- *  NewMOUButton: tambah entri baru (default Draft & Pending)
- *  ===================================================================== */
-function NewMOUButton({
-    onCreate,
-    optionsRows,
+/* ============== Small UI piece (dipakai untuk dashboard) ============== */
+function StatCard({
+    title,
+    value,
+    subtitle,
+    icon,
 }: {
-    onCreate: (m: Omit<MOU, 'id'>) => void;
-    optionsRows: MOU[];
+    title: string;
+    value: number | string;
+    subtitle?: string;
+    icon?: React.ReactNode;
 }) {
-    const [open, setOpen] = useState(false);
-
-    const [level, setLevel] = useState<MOULevel | undefined>();
-    const [documentNumber, setDocumentNumber] = useState('');
-    const [title, setTitle] = useState('');
-    const [entryDate, setEntryDate] = useState('');
-    const [phone, setPhone] = useState('');
-    const [email, setEmail] = useState('');
-    const [faculty, setFaculty] = useState('');
-    const [scopeStr, setScopeStr] = useState('Domestik,Kabupaten');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [suratPermohonanUrl, setSuratPermohonanUrl] = useState('');
-    const [proposalUrl, setProposalUrl] = useState('');
-    const [draftAjuanUrl, setDraftAjuanUrl] = useState('');
-    const [processStatus, setProcessStatus] = useState('Pengajuan Unit Ke LKI');
-    const [approvalStatus, setApprovalStatus] = useState('Menunggu Persetujuan'); // default pending
-    const [statusNote, setStatusNote] = useState('');
-    const [fileUrl, setFileUrl] = useState('');
-
-    // relasi (opsional)
-    const [relatedSearch, setRelatedSearch] = useState('');
-    const [relatedIds, setRelatedIds] = useState<string[]>([]);
-
-    const canSave = level && title.trim() && entryDate && faculty.trim() && startDate && endDate;
-
-    const toggleRelated = (id: string) => {
-        setRelatedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-    };
-
-    const listFiltered = useMemo(() => {
-        const t = relatedSearch.trim().toLowerCase();
-        return optionsRows.filter((r) => {
-            const textMatch =
-                !t ||
-                [r.id, r.title, r.level, r.documentNumber].join(' ').toLowerCase().includes(t);
-            const typeMatch = level ? r.level !== level : true; // tidak boleh relasi ke jenis yg sama
-            return textMatch && typeMatch;
-        });
-    }, [optionsRows, relatedSearch, level]);
-
-    const handleSave = () => {
-        if (!canSave) return;
-
-        const sanitizedRelated = relatedIds.filter((id) => {
-            const r = optionsRows.find((x) => x.id === id);
-            if (!r) return false;
-            if (!level) return true;
-            return r.level !== level;
-        });
-
-        const payload: Omit<MOU, 'id'> = {
-            level: level!,
-            documentNumber: documentNumber.trim() || '—',
-            title: title.trim(),
-            entryDate,
-            partner: '—',
-            partnerType: 'Universitas',
-            partnerInfo: {
-                phone: phone.trim() || undefined,
-                email: email.trim() || undefined,
-            },
-            country: 'Indonesia',
-            faculty: faculty.trim(),
-            unit: faculty.trim(),
-            scope: scopeStr.split(',').map((s) => s.trim()).filter(Boolean),
-            category: 'Cooperation',
-            department: '-',
-            owner: '-',
-            startDate,
-            endDate,
-            status: 'Draft', // default Draft di halaman ajuan
-            documents: {
-                suratPermohonanUrl: suratPermohonanUrl.trim() || null,
-                proposalUrl: proposalUrl.trim() || null,
-                draftAjuanUrl: draftAjuanUrl.trim() || null,
-            },
-            processStatus: processStatus.trim() || undefined,
-            approvalStatus: (approvalStatus || 'Menunggu Persetujuan').trim() || 'Menunggu Persetujuan',
-            statusNote: statusNote.trim() || undefined,
-            fileUrl: fileUrl.trim() || undefined,
-
-            value: undefined,
-            signDate: undefined,
-            studyProgram: undefined,
-            notes: undefined,
-
-            relatedIds: sanitizedRelated.length ? sanitizedRelated : undefined,
-        };
-
-        onCreate(payload);
-        setOpen(false);
-    };
-
     return (
-        <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-                <Button className="gap-2">
-                    <FileSignature className="h-4 w-4" />
-                    Tambah
-                </Button>
-            </SheetTrigger>
-
-            <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-                <SheetHeader>
-                    <SheetTitle>Tambah Ajuan Kerjasama</SheetTitle>
-                </SheetHeader>
-
-                <div className="mt-6 grid gap-4">
-                    {/* Jenis + Nomor */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Jenis Kerjasama</label>
-                            <Select value={level} onValueChange={(v) => setLevel(v as MOULevel)}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Pilih" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="MOU">MOU</SelectItem>
-                                    <SelectItem value="MOA">MOA</SelectItem>
-                                    <SelectItem value="IA">IA</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid gap-2 sm:col-span-2">
-                            <label className="text-sm font-medium">No. Dokumen</label>
-                            <Input placeholder="mis. 001/MOA/FT/2025" value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} />
-                        </div>
-                    </div>
-
-                    {/* Tentang */}
-                    <div className="grid gap-2">
-                        <label className="text-sm font-medium">Tentang</label>
-                        <Input placeholder="Judul/Perihal Kerjasama" value={title} onChange={(e) => setTitle(e.target.value)} />
-                    </div>
-
-                    {/* Tanggal Entry + Masa Berlaku */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Tanggal Entry</label>
-                            <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
-                        </div>
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Mulai</label>
-                            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                        </div>
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Selesai</label>
-                            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-                        </div>
-                    </div>
-
-                    {/* Info Partner */}
-                    <div className="grid gap-2">
-                        <label className="text-sm font-medium">Info Partner</label>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <Input placeholder="Telepon/HP Pengaju" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                            <Input placeholder="Email Pengaju" value={email} onChange={(e) => setEmail(e.target.value)} />
-                        </div>
-                    </div>
-
-                    {/* Unit + Lingkup */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Unit</label>
-                            <Input placeholder="mis. KEDOKTERAN" value={faculty} onChange={(e) => setFaculty(e.target.value)} />
-                        </div>
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Lingkup (pisahkan koma)</label>
-                            <Input placeholder="Domestik,Kabupaten" value={scopeStr} onChange={(e) => setScopeStr(e.target.value)} />
-                        </div>
-                    </div>
-
-                    {/* Status Proses + Persetujuan */}
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Status Proses</label>
-                            <Input value={processStatus} onChange={(e) => setProcessStatus(e.target.value)} />
-                            <div className="text-xs text-muted-foreground">Contoh: Pengajuan Unit Ke LKI</div>
-                        </div>
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Status Persetujuan</label>
-                            <Input value={approvalStatus} onChange={(e) => setApprovalStatus(e.target.value)} />
-                            <div className="text-xs text-muted-foreground">Biarkan "Menunggu Persetujuan" untuk pending.</div>
-                        </div>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <label className="text-sm font-medium">Catatan Status</label>
-                        <Textarea rows={2} value={statusNote} onChange={(e) => setStatusNote(e.target.value)} />
-                    </div>
-
-                    {/* Lampiran umum (URL) */}
-                    <div className="grid gap-2">
-                        <label className="text-sm font-medium">Lampiran Umum (URL) — link pada kolom “Tentang”</label>
-                        <Input placeholder="https://.../dokumen.pdf" value={fileUrl} onChange={(e) => setFileUrl(e.target.value)} />
-                    </div>
-
-                    {/* Relasi (opsional) */}
-                    <div className="grid gap-3 border-t pt-4">
-                        <label className="text-sm font-semibold">Hubungkan dengan dokumen lain (opsional)</label>
-
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                            <Input
-                                placeholder="Cari ID/Judul/Jenis…"
-                                value={relatedSearch}
-                                onChange={(e) => setRelatedSearch(e.target.value)}
-                                className="w-full sm:max-w-sm"
-                            />
-                            <span className="text-xs text-muted-foreground sm:ml-auto">
-                                Bisa pilih lebih dari satu
-                            </span>
-                        </div>
-
-                        <div className="rounded-md border">
-                            <ul className="max-h-64 overflow-y-auto divide-y">
-                                {listFiltered.length === 0 ? (
-                                    <li className="p-3 text-xs text-muted-foreground">Tidak ada kandidat.</li>
-                                ) : (
-                                    listFiltered.map((item) => {
-                                        const checked = relatedIds.includes(item.id);
-                                        return (
-                                            <li key={item.id} className="hover:bg-muted/50">
-                                                <label className="grid grid-cols-[auto,1fr] items-start gap-3 p-2 cursor-pointer">
-                                                    <Checkbox
-                                                        checked={checked}
-                                                        onCheckedChange={() => toggleRelated(item.id)}
-                                                        className="mt-0.5 h-4 w-4"   // ukuran konsisten
-                                                        aria-label={`Pilih ${item.id}`}
-                                                    />
-                                                    <div className="min-w-0">
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <Badge variant="secondary" className="shrink-0">
-                                                                {item.level}
-                                                            </Badge>
-                                                            <span className="font-medium shrink-0">{item.id}</span>
-                                                            <span className="text-muted-foreground truncate sm:whitespace-normal sm:truncate-0">
-                                                                — {item.title}
-                                                            </span>
-                                                        </div>
-                                                        <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                                            {item.documentNumber || 'Tanpa nomor dokumen'}
-                                                        </div>
-                                                    </div>
-                                                </label>
-                                            </li>
-                                        );
-                                    })
-                                )}
-                            </ul>
-                        </div>
-
-                        {relatedIds.length > 0 && (
-                            <div className="pt-2">
-                                <div className="text-xs mb-1 text-muted-foreground">Terpilih:</div>
-                                <div className="flex flex-wrap gap-1">
-                                    {relatedIds.map((id) => {
-                                        const r = optionsRows.find((x) => x.id === id);
-                                        if (!r) return null;
-                                        return (
-                                            <Badge key={id} variant="outline" className="text-xs">
-                                                {r.level}-{id.split('-')[1] ?? id}
-                                            </Badge>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                <SheetFooter className="mt-6">
-                    <Button onClick={handleSave} disabled={!canSave}>
-                        Simpan (UI-only)
-                    </Button>
-                </SheetFooter>
-            </SheetContent>
-        </Sheet>
+        <Card className="shadow-sm">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+                {icon}
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-semibold">{value}</div>
+                {subtitle ? <p className="text-xs text-muted-foreground">{subtitle}</p> : null}
+            </CardContent>
+        </Card>
     );
 }
