@@ -22,6 +22,16 @@ const templates = [
         title: 'Template IA',
         filename: 'template-ia.pdf',
     },
+    {
+        id: 'tpl-surat-permohonan',
+        title: 'Template Surat Permohonan',
+        filename: 'template-surat-permohonan.pdf',
+    },
+    {
+        id: 'tpl-proposal',
+        title: 'Template Proposal',
+        filename: 'template-proposal.pdf',
+    },
 ];
 
 export default function TemplatesPage() {
