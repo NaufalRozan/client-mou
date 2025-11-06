@@ -25,7 +25,9 @@ import {
     Trash2,
     History,
     Search,
+    Info,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 
 /* =================== Types (selaras dengan list) =================== */
 export type MOUStatus = 'Draft' | 'Active' | 'Expiring' | 'Expired' | 'Terminated';
@@ -47,6 +49,9 @@ export type Documents = {
     suratPermohonanFile?: DocFile;
     proposalFile?: DocFile;
     draftAjuanFile?: DocFile;
+
+    finalUrl?: string | null;
+    finalFile?: DocFile;
 };
 
 export type MOU = {
@@ -100,8 +105,12 @@ const daysBetween = (startISO: string, endISO: string) => {
 };
 
 const labelFromPrefix = (p: DocKey) =>
-    p === 'suratPermohonan' ? 'Surat Permohonan' : p === 'proposal' ? 'Proposal' : 'Draf Ajuan';
-type DocKey = 'suratPermohonan' | 'proposal' | 'draftAjuan';
+    p === 'suratPermohonan' ? 'Surat Permohonan'
+        : p === 'proposal' ? 'Proposal'
+            : p === 'draftAjuan' ? 'Draf Ajuan'
+                : 'Dokumen Final';
+type DocKey = 'suratPermohonan' | 'proposal' | 'draftAjuan' | 'final';
+
 
 /* =================== Log Aktivitas Dokumen =================== */
 type DocLogKind =
@@ -495,6 +504,15 @@ export function KerjasamaDetail({
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <DocRow
+                        title="Dokumen Final"
+                        file={form.documents?.finalFile || null}
+                        url={form.documents?.finalUrl || null}
+                        onAdd={(payload) => setDoc('final', payload)}
+                        emptyClass="text-rose-600"
+                        showInfo
+                        infoDescription="Unggah versi akhir yang telah ditandatangani/di-ACC sebagai arsip resmi."
+                    />
+                    <DocRow
                         title="Surat Permohonan"
                         file={form.documents?.suratPermohonanFile || null}
                         url={form.documents?.suratPermohonanUrl || null}
@@ -535,24 +553,127 @@ function DocRow({
     url,
     onAdd,
     emptyClass = 'text-muted-foreground',
+
+    // ⬇️ props baru (opsional) untuk info
+    showInfo = false,
+    infoTitle = 'Dokumen Final',
+    infoDescription = 'Unggah versi akhir yang telah disetujui WR. File/tautan ini akan menjadi rujukan resmi.',
+    infoChecklist = [
+        'Sudah ditandatangani para pihak',
+        'Nomor dokumen sudah terbit (jika ada)',
+        'Format PDF/A atau PDF standar',
+    ],
 }: {
     title: string;
     file: DocFile;
     url: string | null;
     onAdd: (payload: { linkUrl: string | null; file: DocFile }) => void;
     emptyClass?: string;
+
+    // baru
+    showInfo?: boolean;
+    infoTitle?: string;
+    infoDescription?: string;
+    infoChecklist?: string[];
 }) {
     const isEdit = Boolean(file || url);
+
+    // ringkas status saat ini untuk dialog
+    const statusNow = [
+        file ? `File: ${file.name}` : 'File: —',
+        url ? `Link: ${url}` : 'Link: —',
+    ];
+
     return (
         <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-                <h4 className="text-sm font-medium">{title}</h4>
+                <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-medium">{title}</h4>
+
+                    {showInfo && (
+                        <>
+                            {/* Tooltip hover singkat */}
+                            <TooltipProvider delayDuration={150}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+                                            aria-label="Info dokumen final"
+                                        >
+                                            <Info className="h-3.5 w-3.5" />
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-xs text-xs">
+                                        {infoDescription}
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+
+                            {/* Klik untuk detail (dialog) */}
+                            <Dialog>
+                                <DialogContent className="sm:max-w-md">
+                                    <DialogHeader>
+                                        <DialogTitle className="text-base">{infoTitle}</DialogTitle>
+                                        <DialogDescription className="text-xs">
+                                            {infoDescription}
+                                        </DialogDescription>
+                                    </DialogHeader>
+
+                                    <div className="space-y-3">
+                                        <div>
+                                            <div className="text-xs font-medium mb-1">Checklist</div>
+                                            <ul className="list-disc pl-4 text-sm space-y-1">
+                                                {infoChecklist.map((it, i) => (
+                                                    <li key={i}>{it}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+
+                                        <div className="rounded-md border bg-muted/30 p-2">
+                                            <div className="text-xs font-medium mb-1">Status Saat Ini</div>
+                                            <ul className="text-sm space-y-0.5 break-all">
+                                                {statusNow.map((s, i) => (
+                                                    <li key={i}>• {s}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+
+                                        {(file || url) && (
+                                            <div className="flex items-center gap-2">
+                                                {file && (
+                                                    <Button asChild size="sm" variant="secondary">
+                                                        <a href={file.url} download={file.name || 'dokumen-final.pdf'}>
+                                                            Unduh File
+                                                        </a>
+                                                    </Button>
+                                                )}
+                                                {url && (
+                                                    <Button asChild size="sm" variant="outline">
+                                                        <a href={url} target="_blank" rel="noreferrer">
+                                                            Buka Link
+                                                        </a>
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+                        </>
+                    )}
+                </div>
+
                 <AddDocButton isEdit={isEdit} onSave={onAdd} />
             </div>
 
             <div className="space-y-1">
                 {file ? (
-                    <a className="inline-flex items-center gap-1 text-blue-600 hover:underline" href={file.url} download={file.name || 'dokumen.pdf'}>
+                    <a
+                        className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                        href={file.url}
+                        download={file.name || 'dokumen.pdf'}
+                    >
                         <FileDown className="h-3.5 w-3.5" />
                         Download file
                     </a>
@@ -560,7 +681,13 @@ function DocRow({
 
                 {url ? (
                     <div>
-                        <a className="inline-flex items-center gap-1 text-blue-600 hover:underline" href={url} target="_blank" rel="noreferrer" title={url}>
+                        <a
+                            className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={url}
+                        >
                             <ExternalLink className="h-3.5 w-3.5" />
                             Lihat file
                         </a>
@@ -572,6 +699,7 @@ function DocRow({
         </div>
     );
 }
+
 
 function AddDocButton({
     isEdit,

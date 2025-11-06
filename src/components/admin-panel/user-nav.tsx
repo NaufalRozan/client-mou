@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { LayoutGrid, LogOut, User } from 'lucide-react';
+import { LayoutGrid, LogOut, User, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -22,28 +21,23 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-import { clearAuth, getAuth } from '@/lib/proto/auth';
+import { getAuth } from '@/lib/proto/auth';
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { useAuth } from '@/hooks/use-auth';
 
 export function UserNav() {
-  const router = useRouter();
+  const { logout, loading } = useAuth();
   const [username, setUsername] = useState<string>('User');
   const [role, setRole] = useState<string>('-');
 
   useEffect(() => {
     const u = getAuth();
     if (u) {
-      setUsername(u.username);
+      // Support both old and new auth formats
+      setUsername(u.name || u.username);
       setRole(u.role);
     }
   }, []);
-
-  const onLogout = () => {
-    clearAuth();
-    toast.success('Signed out');
-    router.replace('/auth');
-  };
 
   const initials = username
     .split(' ')
@@ -93,9 +87,13 @@ export function UserNav() {
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={onLogout} className="hover:cursor-pointer">
-          <LogOut className="w-4 h-4 mr-3 text-muted-foreground" />
-          Sign out
+        <DropdownMenuItem onClick={logout} className="hover:cursor-pointer" disabled={loading}>
+          {loading ? (
+            <Loader2 className="w-4 h-4 mr-3 text-muted-foreground animate-spin" />
+          ) : (
+            <LogOut className="w-4 h-4 mr-3 text-muted-foreground" />
+          )}
+          {loading ? 'Signing out...' : 'Sign out'}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

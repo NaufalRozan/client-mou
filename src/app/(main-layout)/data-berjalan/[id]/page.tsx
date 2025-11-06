@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+
 import { ContentLayout } from '@/components/admin-panel/content-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +15,7 @@ import {
     FileDown,
     Link2,
     Save,
+    Info,
 } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
@@ -26,6 +28,21 @@ import {
     SheetFooter,
     SheetTrigger,
 } from '@/components/ui/sheet';
+
+import {
+    Tooltip,
+    TooltipProvider,
+    TooltipTrigger,
+    TooltipContent,
+} from '@/components/ui/tooltip';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
 
 /* ==== Types (samakan dengan list) ==== */
 type MOUStatus = 'Draft' | 'Active' | 'Expiring' | 'Expired' | 'Terminated';
@@ -41,6 +58,10 @@ type Documents = {
     suratPermohonanFile?: DocFile;
     proposalFile?: DocFile;
     draftAjuanFile?: DocFile;
+
+    // ⬇️ tambahan untuk dokumen akhir
+    finalUrl?: string | null;
+    finalFile?: DocFile;
 };
 
 type MOU = {
@@ -100,6 +121,10 @@ const MOCK_ROWS: MOU[] = [
         endDate: '2027-07-15',
         status: 'Active',
         documents: {
+            // contoh: punya dokumen final
+            finalUrl: '/dokumen/mou-001-final.pdf',
+            finalFile: { name: 'MOU-001-FINAL.pdf', url: '/dokumen/mou-001-final.pdf' },
+
             suratPermohonanUrl: '/dokumen/mou-001-surat.pdf',
             proposalUrl: '/dokumen/mou-001-proposal.pdf',
             draftAjuanUrl: null,
@@ -113,8 +138,7 @@ const MOCK_ROWS: MOU[] = [
         id: 'MOA-001',
         level: 'MOA',
         documentNumber: '—',
-        title:
-            'PENYELENGGARAAN TRI DHARMA PERGURUAN TINGGI FAKULTAS KEDOKTERAN DAN ILMU KESEHATAN',
+        title: 'PENYELENGGARAAN TRI DHARMA PERGURUAN TINGGI FAKULTAS KEDOKTERAN DAN ILMU KESEHATAN',
         entryDate: '2025-08-29',
         partner: '—',
         partnerType: 'Universitas',
@@ -267,6 +291,21 @@ export default function DataBerjalanDetailPage() {
                         <CardTitle className="text-base">Dokumen</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
+                        {/* ⬇️ Dokumen Final */}
+                        <DocFinalRowView
+                            title="Dokumen Final"
+                            file={row.documents?.finalFile || null}
+                            url={row.documents?.finalUrl || null}
+                            emptyClass="text-rose-600"
+                            infoTitle="Dokumen Final"
+                            infoDescription="Versi akhir yang telah ditandatangani/di-ACC sebagai arsip resmi."
+                            infoChecklist={[
+                                'Sudah ditandatangani para pihak',
+                                'Nomor dokumen sudah terbit (jika ada)',
+                                'Format PDF/A atau PDF standar',
+                            ]}
+                        />
+
                         <DocRowView
                             title="Surat Permohonan"
                             file={row.documents?.suratPermohonanFile || null}
@@ -298,7 +337,6 @@ export default function DataBerjalanDetailPage() {
                             onSave={(nextRelatedIds) => {
                                 // UI-only: update state. Nanti ganti dengan PUT/PATCH API
                                 setRow((prev) => (prev ? { ...prev, relatedIds: nextRelatedIds } : prev));
-                                // contoh log:
                                 console.log('Simpan relatedIds:', nextRelatedIds);
                             }}
                         />
@@ -404,6 +442,138 @@ function DocRowView({
     );
 }
 
+/* ==== Komponen: Dokumen Final (info tooltip + dialog) ==== */
+function DocFinalRowView({
+    title,
+    file,
+    url,
+    emptyClass = 'text-rose-600',
+    infoTitle = 'Dokumen Final',
+    infoDescription = 'Unggah/arsipkan versi akhir yang telah disetujui WR. File/tautan ini akan menjadi rujukan resmi.',
+    infoChecklist = ['Sudah ditandatangani para pihak', 'Nomor dokumen sudah terbit (jika ada)', 'Format PDF/A atau PDF standar'],
+}: {
+    title: string;
+    file: DocFile;
+    url: string | null;
+    emptyClass?: string;
+    infoTitle?: string;
+    infoDescription?: string;
+    infoChecklist?: string[];
+}) {
+    const statusNow = [file ? `File: ${file.name}` : 'File: —', url ? `Link: ${url}` : 'Link: —'];
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-medium">{title}</h4>
+
+                    {/* Tooltip + Dialog info */}
+                    <TooltipProvider delayDuration={150}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Dialog>
+                                    <DialogTrigger asChild>
+                                        <button
+                                            type="button"
+                                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+                                            aria-label="Info dokumen final"
+                                        >
+                                            <Info className="h-3.5 w-3.5" />
+                                        </button>
+                                    </DialogTrigger>
+
+                                    <DialogContent className="sm:max-w-md">
+                                        <DialogHeader>
+                                            <DialogTitle className="text-base">{infoTitle}</DialogTitle>
+                                            <DialogDescription className="text-xs">
+                                                {infoDescription}
+                                            </DialogDescription>
+                                        </DialogHeader>
+
+                                        <div className="space-y-3">
+                                            <div>
+                                                <div className="text-xs font-medium mb-1">Checklist</div>
+                                                <ul className="list-disc pl-4 text-sm space-y-1">
+                                                    {infoChecklist.map((it, i) => (
+                                                        <li key={i}>{it}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+
+                                            <div className="rounded-md border bg-muted/30 p-2">
+                                                <div className="text-xs font-medium mb-1">Status Saat Ini</div>
+                                                <ul className="text-sm space-y-0.5 break-all">
+                                                    {statusNow.map((s, i) => (
+                                                        <li key={i}>• {s}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+
+                                            {(file || url) && (
+                                                <div className="flex items-center gap-2">
+                                                    {file && (
+                                                        <Button asChild size="sm" variant="secondary">
+                                                            <a href={file.url} download={file.name || 'dokumen-final.pdf'}>
+                                                                Unduh File
+                                                            </a>
+                                                        </Button>
+                                                    )}
+                                                    {url && (
+                                                        <Button asChild size="sm" variant="outline">
+                                                            <a href={url} target="_blank" rel="noreferrer">
+                                                                Buka Link
+                                                            </a>
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </DialogContent>
+                                </Dialog>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs text-xs">
+                                {infoDescription}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
+            </div>
+
+            {/* Link/Download sama seperti DocRowView */}
+            <div className="space-y-1">
+                {file ? (
+                    <a
+                        className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                        href={file.url}
+                        download={file.name || 'dokumen.pdf'}
+                    >
+                        <FileDown className="h-3.5 w-3.5" />
+                        Download file
+                    </a>
+                ) : null}
+
+                {url ? (
+                    <div>
+                        <a
+                            className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={url}
+                        >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Lihat file
+                        </a>
+                    </div>
+                ) : null}
+
+                {!file && !url ? <span className={emptyClass}>Tidak Ada</span> : null}
+            </div>
+        </div>
+    );
+}
+
 /* ==== Komponen: EditRelatedSheet (Sheet untuk ubah relatedIds) ==== */
 
 function EditRelatedSheet({
@@ -471,7 +641,10 @@ function EditRelatedSheet({
                             candidates.map((item) => {
                                 const checked = tempSelected.includes(item.id);
                                 return (
-                                    <label key={item.id} className="grid grid-cols-[auto,1fr] items-start gap-3 p-2 cursor-pointer hover:bg-muted/50">
+                                    <label
+                                        key={item.id}
+                                        className="grid grid-cols-[auto,1fr] items-start gap-3 p-2 cursor-pointer hover:bg-muted/50"
+                                    >
                                         <Checkbox
                                             checked={checked}
                                             onCheckedChange={() => toggle(item.id)}

@@ -13,13 +13,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
+
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+    Command,
+    CommandEmpty,
+    CommandGroup,
+    CommandInput,
+    CommandItem,
+    CommandList,
+} from '@/components/ui/command';
 
 import {
     Calendar as CalendarIcon,
@@ -30,9 +35,11 @@ import {
     ExternalLink,
     Eye,
     FileDown,
+    ChevronsUpDown,
+    Check,
 } from 'lucide-react';
 
-import { getAuth } from '@/lib/proto/auth';
+import { getAuth, isAuthed } from '@/lib/proto/auth';
 
 /* ================= Roles ================= */
 type Role = 'LEMBAGA_KERJA_SAMA' | 'FAKULTAS' | 'PRODI' | 'ORANG_LUAR' | 'WR';
@@ -140,7 +147,8 @@ const initialData: MOU[] = [
         id: 'MOA-001',
         level: 'MOA',
         documentNumber: '—',
-        title: 'PENYELENGGARAAN TRI DHARMA PERGURUAN TINGGI FAKULTAS KEDOKTERAN DAN ILMU KESEHATAN',
+        title:
+            'PENYELENGGARAAN TRI DHARMA PERGURUAN TINGGI FAKULTAS KEDOKTERAN DAN ILMU KESEHATAN',
         entryDate: '2025-08-29',
         partner: '—',
         partnerType: 'Universitas',
@@ -200,6 +208,19 @@ const initialData: MOU[] = [
     },
 ];
 
+/* ==== Opsi Lingkup (bisa kamu sesuaikan) ==== */
+const SCOPE_OPTIONS = [
+    'Internasional',
+    'Nasional',
+    'Domestik',
+    'Provinsi',
+    'Kabupaten',
+    'Kota',
+    'Lokal',
+    'Fakultas',
+    'Prodi',
+];
+
 /* ============== Page ============== */
 export default function DataAjuanPage() {
     const router = useRouter();
@@ -218,11 +239,19 @@ export default function DataAjuanPage() {
     const limit = 10;
 
     useEffect(() => {
+        // Check if user is authenticated
+        if (!isAuthed()) {
+            console.log('❌ User not authenticated, redirecting to login...');
+            router.replace('/auth');
+            return;
+        }
+
         const u = getAuth();
+        console.log('✅ User authenticated:', u);
         setRole(u?.role ?? null);
 
         const onStorage = (e: StorageEvent) => {
-            if (e.key === 'proto_auth') {
+            if (e.key === 'proto_auth' || e.key === 'auth_user') {
                 const next = getAuth();
                 setRole(next?.role ?? null);
             }
@@ -627,6 +656,110 @@ function DocRow({
     );
 }
 
+function MultiSelectScope({
+    value,
+    onChange,
+    options = SCOPE_OPTIONS,
+    placeholder = 'Pilih lingkup…',
+}: {
+    value: string[];
+    onChange: (next: string[]) => void;
+    options?: string[];
+    placeholder?: string;
+}) {
+    const [open, setOpen] = useState(false);
+
+    const toggle = (opt: string) => {
+        onChange(value.includes(opt) ? value.filter(v => v !== opt) : [...value, opt]);
+    };
+
+    const label = value.length ? `${value.length} dipilih` : placeholder;
+
+    return (
+        // penting: modal={false} saat di dalam <Sheet>
+        <Popover open={open} onOpenChange={setOpen} modal={false}>
+            <PopoverTrigger asChild>
+                <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="justify-between w-full"
+                >
+                    <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="truncate">{label}</span>
+                        {value.length > 0 && (
+                            <div className="hidden sm:flex gap-1">
+                                {value.slice(0, 3).map(v => (
+                                    <Badge key={v} variant="secondary" className="text-[10px]">
+                                        {v}
+                                    </Badge>
+                                ))}
+                                {value.length > 3 && (
+                                    <span className="text-xs text-muted-foreground">
+                                        +{value.length - 3}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+
+            <PopoverContent
+                className="w-[320px] p-0"
+                align="start"
+                side="bottom"
+                // hindari auto-focus yg kadang memicu close di env tertentu
+                onOpenAutoFocus={(e) => e.preventDefault()}
+                onCloseAutoFocus={(e) => e.preventDefault()}
+                // Cegah event bubbling yang bisa menutup popover
+                onInteractOutside={(e) => {
+                    // Jangan tutup jika interaksi di dalam trigger button
+                    const target = e.target as Element;
+                    if (target?.closest('[role="combobox"]')) {
+                        e.preventDefault();
+                    }
+                }}
+            >
+                <Command>
+                    <CommandInput placeholder="Cari lingkup…" />
+                    <CommandEmpty>Tidak ditemukan.</CommandEmpty>
+                    <CommandList>
+                        <CommandGroup>
+                            {options.map(opt => {
+                                const checked = value.includes(opt);
+                                return (
+                                    <CommandItem
+                                        key={opt}
+                                        value={opt}
+                                        // ⬇️ cegah blur/close saat ditekan (mouse & touch)
+                                        onPointerDown={(e) => e.preventDefault()}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        onTouchStart={(e) => e.preventDefault()}
+                                        // ⬇️ toggle di onSelect, jangan tutup dropdown
+                                        onSelect={(currentValue) => {
+                                            toggle(currentValue);
+                                            // Jangan set open ke false agar dropdown tetap terbuka
+                                        }}
+                                        className="cursor-pointer"
+                                    >
+                                        <div className="mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary">
+                                            {checked ? <Check className="h-3 w-3 text-primary" /> : null}
+                                        </div>
+                                        <span>{opt}</span>
+                                    </CommandItem>
+                                );
+                            })}
+                        </CommandGroup>
+                    </CommandList>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 /** ========================================================================
  *  NewMOUButton: tambah entri baru (default Draft & Pending)
  *  ===================================================================== */
@@ -646,7 +779,10 @@ function NewMOUButton({
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [faculty, setFaculty] = useState('');
-    const [scopeStr, setScopeStr] = useState('Domestik,Kabupaten');
+
+    // ⬇️ ganti dari string ke array
+    const [scopes, setScopes] = useState<string[]>(['Domestik', 'Kabupaten']);
+
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [suratPermohonanUrl, setSuratPermohonanUrl] = useState('');
@@ -702,7 +838,10 @@ function NewMOUButton({
             country: 'Indonesia',
             faculty: faculty.trim(),
             unit: faculty.trim(),
-            scope: scopeStr.split(',').map((s) => s.trim()).filter(Boolean),
+
+            // ⬇️ pakai array langsung
+            scope: scopes,
+
             category: 'Cooperation',
             department: '-',
             owner: '-',
@@ -798,15 +937,16 @@ function NewMOUButton({
                         </div>
                     </div>
 
-                    {/* Unit + Lingkup */}
+                    {/* Unit + Lingkup (Multi-select) */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="grid gap-2">
                             <label className="text-sm font-medium">Unit</label>
                             <Input placeholder="mis. KEDOKTERAN" value={faculty} onChange={(e) => setFaculty(e.target.value)} />
                         </div>
                         <div className="grid gap-2">
-                            <label className="text-sm font-medium">Lingkup (pisahkan koma)</label>
-                            <Input placeholder="Domestik,Kabupaten" value={scopeStr} onChange={(e) => setScopeStr(e.target.value)} />
+                            <label className="text-sm font-medium">Lingkup</label>
+                            <MultiSelectScope value={scopes} onChange={setScopes} />
+                            <div className="text-xs text-muted-foreground">Bisa pilih lebih dari satu.</div>
                         </div>
                     </div>
 
@@ -864,7 +1004,7 @@ function NewMOUButton({
                                                     <Checkbox
                                                         checked={checked}
                                                         onCheckedChange={() => toggleRelated(item.id)}
-                                                        className="mt-0.5 h-4 w-4"   // ukuran konsisten
+                                                        className="mt-0.5 h-4 w-4"
                                                         aria-label={`Pilih ${item.id}`}
                                                     />
                                                     <div className="min-w-0">

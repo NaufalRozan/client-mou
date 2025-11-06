@@ -5,10 +5,12 @@ import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'rea
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { LoadingButton } from '@/components/ui/loading-button';
 import { Input } from '@/components/ui/input';
-import { Loader2, User, RotateCcw } from 'lucide-react';
+import { User, RotateCcw } from 'lucide-react';
 import { getAuth, isAuthed, setAuth } from '@/lib/proto/auth';
 import { mockUsers } from '@/lib/proto/mockUsers';
+import { authAPI, LoginRequest } from '@/lib/api/auth';
 
 /** ---------------- Google Icon (SVG) ---------------- */
 function GoogleIcon() {
@@ -65,10 +67,12 @@ export default function AuthPage() {
     const router = useRouter();
 
     // form state
-    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
+    const [username, setUsername] = useState(''); // Keep for fallback/mock
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [useBackend, setUseBackend] = useState(true);
 
     // captcha state
     const [ch, setCh] = useState<Challenge | null>(null); // mulai null
@@ -109,32 +113,97 @@ export default function AuthPage() {
     }, [router]);
 
     const canSubmitCreds = useMemo(() => {
+        if (useBackend) {
+            return email.trim() !== '' && password.trim() !== '' && captchaOK;
+        }
         return username.trim() !== '' && password.trim() !== '' && captchaOK;
-    }, [username, password, captchaOK]);
+    }, [email, username, password, captchaOK, useBackend]);
 
     const canSubmitGoogle = useMemo(() => captchaOK, [captchaOK]);
 
-    const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!validateCaptcha()) return;
-        if (!canSubmitCreds) return;
+        console.log('Form submitted', { useBackend, email, username, password: '***' });
+        
+        if (!validateCaptcha()) {
+            console.log('Captcha validation failed');
+            return;
+        }
+        if (!canSubmitCreds) {
+            console.log('Credentials validation failed', { canSubmitCreds });
+            return;
+        }
 
         setLoading(true);
+        console.log('Starting login process...');
 
-        const found = mockUsers.find(
-            (u) => u.username === username.trim() && u.password === password
-        );
+        try {
+            if (useBackend) {
+                console.log('Using backend mode');
+                // Backend API login
+                const credentials: LoginRequest = {
+                    email: email.trim(),
+                    password: password.trim(),
+                };
 
-        setTimeout(() => {
-            if (!found) {
-                toast.error('Username / password tidak cocok (mock).');
-                setLoading(false);
-                return;
+                console.log('Calling authAPI.login with:', { email: credentials.email, password: '***' });
+                const response = await authAPI.login(credentials);
+                console.log('Login response:', response);
+                
+                if (response.status === 200 && response.data?.access_token) {
+                    console.log('✅ Login successful, redirecting...');
+                    console.log('Token saved:', localStorage.getItem('auth_token'));
+                    console.log('User saved:', localStorage.getItem('auth_user'));
+                    
+                    toast.success(`Login berhasil! ${response.message}`);
+                    
+                    // Redirect setelah sedikit delay untuk memastikan localStorage tersimpan
+                    setTimeout(() => {
+                        console.log('🔄 Redirecting to /data-ajuan...');
+                        router.push('/data-ajuan');
+                    }, 100);
+                } else {
+                    console.log('❌ Login failed:', response);
+                    toast.error(response.message || 'Login gagal');
+                }
+            } else {
+                // Mock/fallback login
+                const found = mockUsers.find(
+                    (u) => u.username === username.trim() && u.password === password
+                );
+
+                await new Promise(resolve => setTimeout(resolve, 600)); // Simulate API delay
+
+                if (!found) {
+                    toast.error('Username / password tidak cocok (mock).');
+                    return;
+                }
+                
+                setAuth({ username: found.username, role: found.role });
+                toast.success(`Login berhasil sebagai ${found.role}`);
+                router.push('/data-ajuan');
             }
-            setAuth({ username: found.username, role: found.role });
-            toast.success(`Login berhasil sebagai ${found.role}`);
-            router.push('/data-ajuan');
-        }, 600);
+        } catch (error) {
+            console.error('Login error:', error);
+            
+            let errorMessage = 'Terjadi kesalahan saat login. Silakan coba lagi.';
+            
+            if (error instanceof Error) {
+                errorMessage = error.message;
+            }
+            
+            toast.error(errorMessage);
+            
+            // Auto fallback to mock if backend fails dan ini network error
+            if (useBackend && error instanceof Error && error.message.includes('Network error')) {
+                setTimeout(() => {
+                    toast.info('Server tidak tersedia. Beralih ke mode offline...');
+                    setUseBackend(false);
+                }, 2000);
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     // prototype login Google untuk guest
@@ -156,17 +225,48 @@ export default function AuthPage() {
                     <p className="text-sm mt-1 text-[#335c8b]">SIM MOU</p>
 
                     <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
-                        {/* Username */}
-                        <div className="grid gap-2">
-                            <label className="text-sm font-medium">Username</label>
-                            <Input
-                                placeholder="cth: ft_user"
-                                value={username}
-                                onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                                    setUsername(e.target.value)
-                                }
-                            />
+                        {/* Mode Toggle */}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const newMode = !useBackend;
+                                    setUseBackend(newMode);
+                                    toast.info(`Beralih ke ${newMode ? 'Backend API' : 'Mock/Offline'} mode`);
+                                }}
+                                className="text-blue-600 hover:underline"
+                            >
+                                {useBackend ? 'Mode: Backend API' : 'Mode: Mock/Offline'}
+                            </button>
+                            <span>•</span>
+                            <span>Klik untuk {useBackend ? 'mode offline' : 'mode online'}</span>
                         </div>
+
+                        {/* Email (Backend) / Username (Mock) */}
+                        {useBackend ? (
+                            <div className="grid gap-2">
+                                <label className="text-sm font-medium">Email</label>
+                                <Input
+                                    type="email"
+                                    placeholder="user@example.com"
+                                    value={email}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                        setEmail(e.target.value)
+                                    }
+                                />
+                            </div>
+                        ) : (
+                            <div className="grid gap-2">
+                                <label className="text-sm font-medium">Username</label>
+                                <Input
+                                    placeholder="cth: ft_user"
+                                    value={username}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                        setUsername(e.target.value)
+                                    }
+                                />
+                            </div>
+                        )}
 
                         {/* Password */}
                         <div className="grid gap-2">
@@ -253,20 +353,15 @@ export default function AuthPage() {
                         </div>
 
                         {/* Tombol login */}
-                        <Button
+                        <LoadingButton
                             type="submit"
-                            disabled={!canSubmitCreds || loading}
+                            disabled={!canSubmitCreds}
+                            loading={loading}
+                            loadingText="Logging in..."
                             className="mt-1"
                         >
-                            {loading ? (
-                                <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Logging in...
-                                </>
-                            ) : (
-                                'Login'
-                            )}
-                        </Button>
+                            Login
+                        </LoadingButton>
 
                         {/* Divider */}
                         <div className="relative my-2">
@@ -292,18 +387,27 @@ export default function AuthPage() {
                             Lanjutkan dengan Google
                         </Button>
 
-                        <div className="mt-1 text-xs text-muted-foreground">
-                            Akun mock: <br />
-                            <code>ft_user / ft123</code> → FAKULTAS
-                            <br />
-                            <code>lki_admin / lki123</code> → LEMBAGA_KERJA_SAMA
-                            <br />
-                            <code>prodi_user / prodi123</code> → PRODI
-                            <br />
-                            <code>guest_ext / guest123</code> → ORANG_LUAR
-                            <br />
-                            <code>wr_admin / wr123</code> → WR
-                        </div>
+                        {!useBackend && (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                                <div className="font-medium mb-1">Akun Mock:</div>
+                                <code>ft_user / ft123</code> → FAKULTAS
+                                <br />
+                                <code>lki_admin / lki123</code> → LEMBAGA_KERJA_SAMA
+                                <br />
+                                <code>prodi_user / prodi123</code> → PRODI
+                                <br />
+                                <code>guest_ext / guest123</code> → ORANG_LUAR
+                                <br />
+                                <code>wr_admin / wr123</code> → WR
+                            </div>
+                        )}
+
+                        {useBackend && (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                                <div className="font-medium mb-1">Mode Backend API:</div>
+                                Gunakan email dan password yang valid dari backend Anda.
+                            </div>
+                        )}
                     </form>
                 </div>
             </div>

@@ -18,10 +18,8 @@ import {
     XCircle,
     ChevronLeft,
     ChevronRight,
-    ExternalLink,
-    Eye,
-    FileDown,
     FileSignature,
+    Eye,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -91,6 +89,21 @@ function DateBadge({ date }: { date: string }) {
     );
 }
 
+function StatusPill({ status }: { status: MOUStatus }) {
+    const base = 'px-2 py-0.5 text-xs rounded-full border';
+    const cls =
+        status === 'Active'
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            : status === 'Expiring'
+                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                : status === 'Expired'
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : status === 'Draft'
+                        ? 'bg-slate-50 text-slate-700 border-slate-200'
+                        : 'bg-zinc-50 text-zinc-700 border-zinc-200';
+    return <span className={`${base} ${cls}`}>{status}</span>;
+}
+
 /* ============== Seed (boleh diganti dari API/shared store) ============== */
 const initialData: MOU[] = [
     {
@@ -158,7 +171,7 @@ const initialData: MOU[] = [
     },
 ];
 
-/* ============== Page (Approved Only, UI mengikuti Data Ajuan) ============== */
+/* ============== Page (Approved Only, table ringkas) ============== */
 export default function DataBerjalanPage() {
     const [loading, setLoading] = useState(true);
     const [rows, setRows] = useState<MOU[]>([]);
@@ -186,26 +199,13 @@ export default function DataBerjalanPage() {
         [rows]
     );
 
-    // filter lanjutan di atas approvedRows (sama seperti Data Ajuan)
+    // filter lanjutan di atas approvedRows
     const filtered = useMemo(() => {
         const txt = q.trim().toLowerCase();
         return approvedRows.filter((d) => {
             const matchQ =
                 txt === '' ||
-                [
-                    d.title,
-                    d.partner,
-                    d.documentNumber,
-                    d.faculty,
-                    d.studyProgram,
-                    d.unit,
-                    d.processStatus,
-                    d.approvalStatus,
-                ]
-                    .filter(Boolean)
-                    .join(' ')
-                    .toLowerCase()
-                    .includes(txt);
+                [d.title, d.documentNumber, d.faculty, d.unit].filter(Boolean).join(' ').toLowerCase().includes(txt);
 
             const matchStatus = status === 'all' || d.status === status;
             const matchLevel = level === 'all' || d.level === level;
@@ -233,7 +233,7 @@ export default function DataBerjalanPage() {
     return (
         <ContentLayout title="Data Berjalan (Sudah ACC WR)">
             <div className="mt-6 space-y-6">
-                {/* Info Bar (hitung dari approved saja) */}
+                {/* Info Bar */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <StatCard title="Total Berjalan" value={stats.total} subtitle="Sudah ACC WR" icon={<FileSignature className="h-5 w-5" />} />
                     <StatCard title="Active" value={stats.active} subtitle="Status dokumen" icon={<CheckCircle2 className="h-5 w-5" />} />
@@ -251,7 +251,7 @@ export default function DataBerjalanPage() {
                             <div className="relative w-full max-w-sm">
                                 <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input
-                                    placeholder="Cari judul/no dokumen…"
+                                    placeholder="Cari judul / no dokumen / unit…"
                                     className="pl-8"
                                     value={q}
                                     onChange={(e) => {
@@ -302,7 +302,7 @@ export default function DataBerjalanPage() {
                     </CardContent>
                 </Card>
 
-                {/* Tabel (approved only) */}
+                {/* Tabel (approved only, ringkas) */}
                 <Card>
                     <CardHeader className="pb-3">
                         <CardTitle className="text-base">Daftar Dokumen Berjalan</CardTitle>
@@ -313,20 +313,16 @@ export default function DataBerjalanPage() {
                         ) : (
                             <>
                                 <div className="relative overflow-x-auto rounded-md border">
-                                    <Table className="min-w-[1200px]">
+                                    <Table className="min-w-[900px]">
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead className="w-[50px]">No</TableHead>
+                                                <TableHead className="w-[56px]">No</TableHead>
                                                 <TableHead>Tentang</TableHead>
-                                                <TableHead>Jenis Kerjasama</TableHead>
-                                                <TableHead>Tanggal Entry</TableHead>
-                                                <TableHead>Info Partner</TableHead>
+                                                <TableHead>Jenis</TableHead>
                                                 <TableHead>Unit</TableHead>
-                                                <TableHead>Lingkup</TableHead>
-                                                <TableHead>Masa Berlaku</TableHead>
-                                                <TableHead>Dokumen</TableHead>
-                                                <TableHead>Status Proses</TableHead>
-                                                <TableHead>Catatan Status</TableHead>
+                                                <TableHead>Tgl Entry</TableHead>
+                                                <TableHead>Berlaku</TableHead>
+                                                <TableHead>Status</TableHead>
                                                 <TableHead className="text-right">Aksi</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -342,22 +338,23 @@ export default function DataBerjalanPage() {
                                                     return (
                                                         <TableRow key={row.id} className="align-top">
                                                             <TableCell>{start + idx + 1}</TableCell>
+
+                                                            {/* Tentang (judul + nomor dokumen + chip terkait) */}
                                                             <TableCell>
                                                                 <div className="space-y-1">
-                                                                    <a
-                                                                        className="font-medium text-blue-600 hover:underline"
-                                                                        href={row.fileUrl || '#'}
-                                                                        target="_blank"
-                                                                        rel="noreferrer"
-                                                                    >
-                                                                        {row.title}
-                                                                    </a>
+                                                                    <div className="font-medium">{row.title}</div>
+                                                                    <div className="text-xs text-muted-foreground">
+                                                                        {row.documentNumber || '—'}
+                                                                    </div>
 
                                                                     {related.length > 0 && (
                                                                         <div className="flex flex-wrap gap-1 pt-1">
                                                                             {related.map((r) => (
-                                                                                <Badge key={r.id} variant="outline" className="text-xs">
-                                                                                    <Link href={`/data-berjalan/${encodeURIComponent(r.id)}`} className="hover:underline">
+                                                                                <Badge key={r.id} variant="outline" className="text-[11px]">
+                                                                                    <Link
+                                                                                        href={`/data-berjalan/${encodeURIComponent(r.id)}`}
+                                                                                        className="hover:underline"
+                                                                                    >
                                                                                         Terkait: {r.level}-{r.id.split('-')[1] ?? r.id}
                                                                                     </Link>
                                                                                 </Badge>
@@ -367,112 +364,67 @@ export default function DataBerjalanPage() {
                                                                 </div>
                                                             </TableCell>
 
-                                                            <TableCell>
-                                                                <div className="space-y-1">
-                                                                    <div className="font-medium">{row.level}</div>
-                                                                    <div className="text-xs text-muted-foreground">
-                                                                        {row.documentNumber || 'Belum Masuk ' + row.level}
-                                                                    </div>
-                                                                </div>
+                                                            {/* Jenis */}
+                                                            <TableCell className="whitespace-nowrap">
+                                                                <div className="font-medium">{row.level}</div>
                                                             </TableCell>
 
-                                                            <TableCell>{fmtDate(row.entryDate)}</TableCell>
-
-                                                            <TableCell>
-                                                                <div className="text-sm">
-                                                                    {row.partnerInfo?.phone ? (
-                                                                        <>
-                                                                            Telepon / HP Pengaju:<br />
-                                                                            {row.partnerInfo.phone}
-                                                                            <br />
-                                                                        </>
-                                                                    ) : null}
-                                                                    {row.partnerInfo?.email ? (
-                                                                        <>
-                                                                            Email Pengaju:
-                                                                            <br />
-                                                                            <a className="text-blue-600 hover:underline" href={`mailto:${row.partnerInfo.email}`}>
-                                                                                {row.partnerInfo.email}
-                                                                            </a>
-                                                                        </>
-                                                                    ) : null}
-                                                                </div>
+                                                            {/* Unit */}
+                                                            <TableCell className="uppercase">
+                                                                {row.faculty || row.unit || '—'}
                                                             </TableCell>
 
-                                                            <TableCell className="uppercase">{row.faculty || row.unit}</TableCell>
-
-                                                            <TableCell>
-                                                                <ul className="text-sm list-disc pl-4">
-                                                                    {row.scope.map((s) => (
-                                                                        <li key={s}>*{s}</li>
-                                                                    ))}
-                                                                </ul>
+                                                            {/* Entry */}
+                                                            <TableCell className="whitespace-nowrap">
+                                                                {fmtDate(row.entryDate)}
                                                             </TableCell>
 
+                                                            {/* Berlaku (range + total hari) */}
                                                             <TableCell>
                                                                 <div className="text-sm space-y-1">
-                                                                    <div>
-                                                                        Tanggal Mulai
-                                                                        <br />
+                                                                    <div className="flex gap-1 items-center">
                                                                         <DateBadge date={row.startDate} />
-                                                                    </div>
-                                                                    <div>
-                                                                        Tanggal Berakhir
-                                                                        <br />
+                                                                        <span className="text-muted-foreground text-[11px]">s/d</span>
                                                                         <DateBadge date={row.endDate} />
                                                                     </div>
-                                                                    <div className="pt-1">
-                                                                        Masa Berlaku : {masaHari.toString().padStart(2, '0')} Hari
+                                                                    <div className="text-xs text-muted-foreground">
+                                                                        {masaHari} hari
                                                                     </div>
                                                                 </div>
                                                             </TableCell>
 
-                                                            <TableCell>
-                                                                <div className="text-sm space-y-4">
-                                                                    <DocRow
-                                                                        title="Dokumen Surat Permohonan"
-                                                                        file={row.documents?.suratPermohonanFile || null}
-                                                                        url={row.documents?.suratPermohonanUrl || null}
-                                                                    />
-                                                                    <DocRow
-                                                                        title="Dokumen Proposal"
-                                                                        file={row.documents?.proposalFile || null}
-                                                                        url={row.documents?.proposalUrl || null}
-                                                                        emptyClass="text-rose-600"
-                                                                    />
-                                                                    <DocRow
-                                                                        title="Dokumen Draf Ajuan"
-                                                                        file={row.documents?.draftAjuanFile || null}
-                                                                        url={row.documents?.draftAjuanUrl || null}
-                                                                    />
+                                                            {/* Status (status + label Disetujui selalu) */}
+                                                            <TableCell className="whitespace-nowrap">
+                                                                <div className="flex flex-col gap-1">
+                                                                    <StatusPill status={row.status} />
+                                                                    <span className="text-[11px] text-emerald-700 font-medium">
+                                                                        Disetujui
+                                                                    </span>
                                                                 </div>
                                                             </TableCell>
 
-                                                            <TableCell>
-                                                                <div className="space-y-1">
-                                                                    <div>{row.processStatus || '-'}</div>
-                                                                    <div className="text-sm">
-                                                                        Status Persetujuan:{' '}
-                                                                        <span className="font-medium text-emerald-700">Disetujui</span>
-                                                                    </div>
-                                                                </div>
-                                                            </TableCell>
-
-                                                            <TableCell className="text-sm">{row.statusNote || '-'}</TableCell>
-
-                                                            <TableCell className="text-right">
-                                                                <Button asChild variant="outline" size="icon" className="h-8 w-8">
+                                                            {/* Aksi */}
+                                                            <TableCell className="text-right space-x-1">
+                                                                <Button asChild variant="outline" size="icon" className="h-8 w-8" title="Detail">
                                                                     <Link href={`/data-berjalan/${encodeURIComponent(row.id)}`} aria-label="Lihat detail">
                                                                         <Eye className="h-4 w-4" />
                                                                     </Link>
                                                                 </Button>
+
+                                                                <Button asChild variant="outline" size="icon" className="h-8 w-8" title="Daftar Kegiatan">
+                                                                    <Link href={`/data-berjalan/${encodeURIComponent(row.id)}/kegiatan`}>
+                                                                        <CalendarIcon className="h-4 w-4" />
+                                                                    </Link>
+                                                                </Button>
                                                             </TableCell>
+
+
                                                         </TableRow>
                                                     );
                                                 })
                                             ) : (
                                                 <TableRow>
-                                                    <TableCell colSpan={12} className="h-24 text-center text-sm text-muted-foreground">
+                                                    <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
                                                         Belum ada dokumen berjalan.
                                                     </TableCell>
                                                 </TableRow>
@@ -501,47 +453,6 @@ export default function DataBerjalanPage() {
                 </Card>
             </div>
         </ContentLayout>
-    );
-}
-
-/* ====== Komponen kecil untuk 1 jenis dokumen (judul + aksi) ====== */
-function DocRow({
-    title,
-    file,
-    url,
-    emptyClass = 'text-muted-foreground',
-}: {
-    title: string;
-    file: DocFile;
-    url: string | null;
-    emptyClass?: string;
-}) {
-    return (
-        <div className="space-y-2">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <h4 className="text-sm font-medium">{title}</h4>
-            </div>
-
-            <div className="space-y-1">
-                {file ? (
-                    <a className="inline-flex items-center gap-1 text-blue-600 hover:underline" href={file.url} download={file.name || 'dokumen.pdf'}>
-                        <FileDown className="h-3.5 w-3.5" />
-                        Download file
-                    </a>
-                ) : null}
-
-                {url ? (
-                    <div>
-                        <a className="inline-flex items-center gap-1 text-blue-600 hover:underline" href={url} target="_blank" rel="noreferrer" title={url}>
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            Lihat file
-                        </a>
-                    </div>
-                ) : null}
-
-                {!file && !url ? <span className={emptyClass}>Tidak Ada</span> : null}
-            </div>
-        </div>
     );
 }
 
