@@ -124,7 +124,7 @@ export default function AuthPage() {
     const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         console.log('Form submitted', { useBackend, email, username, password: '***' });
-        
+
         if (!validateCaptcha()) {
             console.log('Captcha validation failed');
             return;
@@ -149,14 +149,14 @@ export default function AuthPage() {
                 console.log('Calling authAPI.login with:', { email: credentials.email, password: '***' });
                 const response = await authAPI.login(credentials);
                 console.log('Login response:', response);
-                
+
                 if (response.status === 200 && response.data?.access_token) {
                     console.log('✅ Login successful, redirecting...');
                     console.log('Token saved:', localStorage.getItem('auth_token'));
                     console.log('User saved:', localStorage.getItem('auth_user'));
-                    
+
                     toast.success(`Login berhasil! ${response.message}`);
-                    
+
                     // Redirect setelah sedikit delay untuk memastikan localStorage tersimpan
                     setTimeout(() => {
                         console.log('🔄 Redirecting to /data-ajuan...');
@@ -178,22 +178,22 @@ export default function AuthPage() {
                     toast.error('Username / password tidak cocok (mock).');
                     return;
                 }
-                
+
                 setAuth({ username: found.username, role: found.role });
                 toast.success(`Login berhasil sebagai ${found.role}`);
                 router.push('/data-ajuan');
             }
         } catch (error) {
             console.error('Login error:', error);
-            
+
             let errorMessage = 'Terjadi kesalahan saat login. Silakan coba lagi.';
-            
+
             if (error instanceof Error) {
                 errorMessage = error.message;
             }
-            
+
             toast.error(errorMessage);
-            
+
             // Auto fallback to mock if backend fails dan ini network error
             if (useBackend && error instanceof Error && error.message.includes('Network error')) {
                 setTimeout(() => {

@@ -21,7 +21,7 @@ export function setAuth(user: AuthUser) {
 
 export function getAuth(): AuthUser | null {
     if (typeof window === "undefined") return null;
-    
+
     // Check for new auth format first
     const userStr = localStorage.getItem(USER_KEY);
     if (userStr) {
@@ -38,7 +38,7 @@ export function getAuth(): AuthUser | null {
             // Fall through to legacy format
         }
     }
-    
+
     // Fallback to legacy format
     const s = localStorage.getItem(KEY);
     if (!s) return null;
@@ -58,15 +58,15 @@ export function clearAuth() {
 
 export function isAuthed() {
     if (typeof window === "undefined") return false;
-    
+
     // Check for token-based auth first
     const token = localStorage.getItem(TOKEN_KEY);
     const user = localStorage.getItem(USER_KEY);
-    
+
     if (token && user) {
         return true;
     }
-    
+
     // Fallback to legacy auth
     return !!getAuth();
 }
@@ -79,20 +79,20 @@ export function getToken(): string | null {
 // Helper function to map backend roles to local roles
 function mapBackendRoleToLocal(backendRole: string | null): Role {
     if (!backendRole) return 'LEMBAGA_KERJA_SAMA'; // Default role jika null
-    
+
     const roleMapping: Record<string, Role> = {
         'lembaga_kerja_sama': 'LEMBAGA_KERJA_SAMA',
-        'fakultas': 'FAKULTAS', 
+        'fakultas': 'FAKULTAS',
         'prodi': 'PRODI',
         'orang_luar': 'ORANG_LUAR',
         'wr': 'WR',
         // Add exact matches too
         'LEMBAGA_KERJA_SAMA': 'LEMBAGA_KERJA_SAMA',
         'FAKULTAS': 'FAKULTAS',
-        'PRODI': 'PRODI', 
+        'PRODI': 'PRODI',
         'ORANG_LUAR': 'ORANG_LUAR',
         'WR': 'WR',
     };
-    
+
     return roleMapping[backendRole] || 'LEMBAGA_KERJA_SAMA';
 }
