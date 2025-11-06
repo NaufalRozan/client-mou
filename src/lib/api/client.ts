@@ -13,41 +13,45 @@ class APIClient {
         console.log('API Client initialized with baseURL:', this.baseURL);
     }
 
-    private getAuthHeaders(): Record<string, string> {
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        };
+  private getAuthHeaders(hasBody: boolean = true): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
 
-        if (typeof window !== 'undefined') {
-            const token = localStorage.getItem('auth_token');
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-        }
-
-        return headers;
+    // Only add Content-Type for requests with body
+    if (hasBody) {
+      headers['Content-Type'] = 'application/json';
     }
 
-    async request<T = any>(endpoint: string, config: RequestConfig = {}): Promise<T> {
-        const url = `${this.baseURL}${endpoint}`;
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
 
-        const finalConfig: RequestConfig = {
-            ...config,
-            headers: {
-                ...this.getAuthHeaders(),
-                ...config.headers,
-            },
-        };
+    return headers;
+  }    async request<T = any>(endpoint: string, config: RequestConfig = {}): Promise<T> {
+    const url = `${this.baseURL}${endpoint}`;
+    
+    // Check if request has body
+    const hasBody = Boolean(config.body);
+    
+    const finalConfig: RequestConfig = {
+      ...config,
+      headers: {
+        ...this.getAuthHeaders(hasBody),
+        ...config.headers,
+      },
+    };
 
-        console.log('API Request:', {
-            url,
-            method: config.method || 'GET',
-            headers: finalConfig.headers,
-            body: config.body
-        });
-
-        try {
+    console.log('API Request:', {
+      url,
+      method: config.method || 'GET',
+      headers: finalConfig.headers,
+      body: config.body,
+      hasBody
+    });        try {
             const response = await fetch(url, finalConfig);
             console.log('API Response status:', response.status, response.statusText);
 

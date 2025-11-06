@@ -5,6 +5,7 @@ import {
   Bookmark,
   SquarePen,
   LayoutGrid,
+  Building2,
   LucideIcon
 } from "lucide-react";
 
@@ -58,6 +59,17 @@ export function getMenuList(pathname: string): Group[] {
           href: "/templates",
           label: "Template Dokumen",
           icon: LayoutGrid,
+          submenus: []
+        }
+      ]
+    },
+    {
+      groupLabel: "Master Data",
+      menus: [
+        {
+          href: "/unit",
+          label: "Unit",
+          icon: Building2,
           submenus: []
         }
       ]
