@@ -35,7 +35,16 @@ export function Sidebar() {
           asChild
         >
           <Link href="/dashboard" className="flex items-center gap-2">
-            <PanelsTopLeft className="w-6 h-6 mr-1" />
+              <img
+              src="/Logo_Unjani.png"
+              alt="Logo Unjani"
+              className={cn(
+                "w-8 h-8 mr-1 transition-transform ease-in-out duration-300",
+                !getOpenState() ? "translate-x-1" : "translate-x-0"
+              )}
+              width={32}
+              height={32}
+            />
             <h1
               className={cn(
                 "font-bold text-lg whitespace-nowrap transition-[transform,opacity,display] ease-in-out duration-300",

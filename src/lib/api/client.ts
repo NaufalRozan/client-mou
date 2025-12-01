@@ -68,15 +68,25 @@ class APIClient {
             const data = await response.json();
             console.log('Response data:', data);
 
-            if (!response.ok) {
-                console.log('Response not ok:', response.status, data);
-                // Handle 401 Unauthorized - auto logout
-                if (response.status === 401) {
-                    this.handleUnauthorized();
-                }
+                if (!response.ok) {
+                    console.log('Response not ok:', response.status, data);
+                    // Handle 401 Unauthorized - auto logout
+                    if (response.status === 401) {
+                        this.handleUnauthorized();
+                    }
 
-                throw new Error(data.message || `HTTP error! status: ${response.status}`);
-            }
+                    // Format backend error message: check common shapes
+                    let errMsg = `HTTP error! status: ${response.status}`;
+                    if (data) {
+                        if (typeof data.message === 'string') errMsg = data.message;
+                        else if (typeof data.errors === 'string') errMsg = data.errors;
+                        else if (Array.isArray(data.errors) && data.errors.length) errMsg = data.errors.join(', ');
+                        else if (typeof data.detail === 'string') errMsg = data.detail;
+                        else if (typeof data.error === 'string') errMsg = data.error;
+                    }
+
+                    throw new Error(errMsg);
+                }
 
             return data;
         } catch (error) {

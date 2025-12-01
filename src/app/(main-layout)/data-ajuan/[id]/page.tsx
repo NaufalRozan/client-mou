@@ -5,8 +5,10 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ContentLayout } from '@/components/admin-panel/content-layout';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Trash2 } from 'lucide-react';
 import { KerjasamaDetail, MOU } from '@/components/data-ajuan/data-ajuan-detail';
+import { kerjasamaAPI } from '@/lib/api/kerjasama';
+import { toast } from 'sonner';
 
 /* ================= Mock data (prototype) ================= */
 const mockData: MOU[] = [
@@ -104,6 +106,38 @@ const mockData: MOU[] = [
 
 /* ============== SEMENTARA: mock fetch ============== */
 async function fetchMouById(id: string): Promise<MOU | null> {
+    try {
+        const res = await kerjasamaAPI.getById(id);
+        if (res.status === 'success') {
+            const k = res.data;
+            return {
+                id: k.id,
+                level: (k.jenis as any) || 'MOU',
+                documentNumber: k.nomorDokumen || '',
+                title: k.judul || '-',
+                entryDate: k.tanggalEntry || new Date().toISOString(),
+                partner: '-',
+                partnerType: 'Universitas',
+                country: 'Indonesia',
+                faculty: k.unitId || '',
+                scope: k.lingkup ? k.lingkup.split(',') : ['Nasional'],
+                category: 'Cooperation',
+                department: '-',
+                owner: '-',
+                startDate: k.tanggalMulai || new Date().toISOString(),
+                endDate: k.tanggalBerakhir || new Date().toISOString(),
+                status: (k.statusDokumen as any) || 'Draft',
+                documents: {},
+                processStatus: k.statusProses,
+                approvalStatus: k.statusPersetujuan,
+                statusNote: k.catatanStatus,
+                fileUrl: k.lampiranURL,
+                relatedIds: k.idDokumenRelasi,
+            } as MOU;
+        }
+    } catch (error) {
+        console.error('Fetch kerjasama by id error:', error);
+    }
     const found = mockData.find((d) => d.id === id);
     return found || null;
 }
@@ -124,12 +158,33 @@ export default function KerjasamaDetailPage() {
     }, [id]);
 
     // Persist perubahan dari komponen (prototype: update ke mockData juga)
-    const handleChange = (next: MOU) => {
+    const handleChange = async (next: MOU) => {
         setMou(next);
-        const idx = mockData.findIndex((d) => d.id === next.id);
-        if (idx >= 0) {
-            // simpan perubahan termasuk relatedIds yang diedit
-            mockData[idx] = { ...mockData[idx], ...next };
+        try {
+            const payload = {
+                unitId: next.unit || next.faculty,
+                jenis: next.level,
+                nomorDokumen: next.documentNumber,
+                judul: next.title,
+                tanggalEntry: next.entryDate,
+                tanggalMulai: next.startDate,
+                tanggalBerakhir: next.endDate,
+                teleponPengaju: next.partnerInfo?.phone,
+                emailPengaju: next.partnerInfo?.email,
+                lingkup: next.scope.join(','),
+                statusProses: next.processStatus,
+                statusPersetujuan: next.approvalStatus,
+                catatanStatus: next.statusNote,
+                lampiranURL: next.fileUrl,
+                statusDokumen: next.status,
+                idDokumenRelasi: next.relatedIds || [],
+            };
+
+            await kerjasamaAPI.update(next.id, payload);
+            toast.success('Perubahan berhasil disimpan');
+        } catch (error) {
+            console.error('Update kerjasama error:', error);
+            toast.error('Gagal menyimpan perubahan');
         }
     };
 
@@ -145,6 +200,21 @@ export default function KerjasamaDetailPage() {
                     <Link href="/data-ajuan">
                         <ArrowLeft className="mr-1 h-4 w-4" /> Kembali
                     </Link>
+                </Button>
+                <Button className="ml-2" variant="destructive" size="sm" onClick={async () => {
+                    if (!confirm('Apakah Anda yakin ingin menghapus ajuan ini?')) return;
+                    if (!id) return;
+                    try {
+                        await kerjasamaAPI.delete(id);
+                        toast.success('Ajuan berhasil dihapus');
+                        // redirect back
+                        window.location.href = '/data-ajuan';
+                    } catch (error) {
+                        console.error('Delete detail error', error);
+                        toast.error('Gagal menghapus ajuan');
+                    }
+                }}>
+                    <Trash2 className="mr-1 h-4 w-4" /> Hapus
                 </Button>
             </div>
 

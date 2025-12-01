@@ -272,8 +272,12 @@ export function KerjasamaDetail({
     };
 
     const handleSave = async () => {
-        // simpan (UI-only)
-        onChange?.(form);
+        // simpan
+        try {
+            await onChange?.(form);
+        } catch (error) {
+            console.error('Save failed:', error);
+        }
     };
 
     // ====== Kandidat relasi (jika allDocs disediakan) ======
