@@ -32,7 +32,6 @@ import {
   SheetTitle,
   SheetTrigger
 } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -57,11 +56,11 @@ import {
   Trash2
 } from "lucide-react";
 
-import { getAuth, isAuthed } from "@/lib/proto/auth";
+import { getAuth, isAuthed, type AuthUser } from "@/lib/proto/auth";
 import { kerjasamaAPI, type KerjasamaRequest } from "@/lib/api/kerjasama";
 import { unitAPI } from "@/lib/api/unit";
+import { authAPI } from "@/lib/api/auth";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,11 +78,20 @@ type Role = "LEMBAGA_KERJA_SAMA" | "FAKULTAS" | "PRODI" | "ORANG_LUAR" | "WR";
 /* ================= Types ================= */
 type MOUStatus = "Draft" | "Active" | "Expiring" | "Expired" | "Terminated";
 type MOULevel = "MOU" | "MOA" | "IA";
-type PartnerType = "Universitas" | "Industri" | "Pemerintah" | "Organisasi";
+type PartnerType =
+  | "Universitas"
+  | "Industri"
+  | "Pemerintah"
+  | "Organisasi"
+  | "Dudika";
 
 type PartnerInfo = {
   phone?: string;
   email?: string;
+  contactName?: string;
+  contactTitle?: string;
+  contactWhatsapp?: string;
+  website?: string;
 };
 
 type DocFile = { name: string; url: string } | null;
@@ -92,9 +100,17 @@ type Documents = {
   suratPermohonanUrl?: string | null;
   proposalUrl?: string | null;
   draftAjuanUrl?: string | null;
+  reviewUrl?: string | null;
+  reviewFile?: DocFile;
   suratPermohonanFile?: DocFile;
   proposalFile?: DocFile;
   draftAjuanFile?: DocFile;
+};
+
+type InstitutionAddress = {
+  province?: string;
+  city?: string;
+  country?: string;
 };
 
 type MOU = {
@@ -120,6 +136,9 @@ type MOU = {
   endDate: string;
   status: MOUStatus;
   documents?: Documents;
+  institutionAddress?: InstitutionAddress;
+  durationYears?: number | null;
+  persetujuanDekan?: boolean | null;
   processStatus?: string;
   approvalStatus?: string; // "Disetujui" = sudah ACC WR
   statusNote?: string;
@@ -141,6 +160,40 @@ const daysBetween = (startISO: string, endISO: string) => {
   return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
 };
 
+const PARTNER_TYPE_OPTIONS: PartnerType[] = ["Universitas", "Dudika"];
+const LINGKUP_OPTIONS = ["Nasional", "Internasional"] as const;
+const PROCESS_OPTIONS = [
+  "Pengajuan",
+  "Review DKGE",
+  "Review WR",
+  "Review BLK",
+  "Revisi",
+  "Selesai"
+] as const;
+const DURATION_OPTIONS = [1, 2, 3, 4, 5];
+
+const PROVINCES: Array<{ name: string; cities: string[] }> = [
+  {
+    name: "DI Yogyakarta",
+    cities: ["Yogyakarta", "Sleman", "Bantul", "Kulon Progo", "Gunungkidul"]
+  },
+  { name: "DKI Jakarta", cities: ["Jakarta Pusat", "Jakarta Barat", "Jakarta Selatan", "Jakarta Timur", "Jakarta Utara"] },
+  { name: "Jawa Barat", cities: ["Bandung", "Bekasi", "Depok", "Bogor"] },
+  { name: "Jawa Tengah", cities: ["Semarang", "Surakarta", "Magelang"] },
+  { name: "Jawa Timur", cities: ["Surabaya", "Malang", "Kediri", "Sidoarjo"] }
+];
+
+const COUNTRIES = [
+  "Malaysia",
+  "Singapore",
+  "Thailand",
+  "Australia",
+  "United Kingdom",
+  "United States",
+  "Japan",
+  "Saudi Arabia"
+];
+
 // trim string, return undefined when empty/whitespace
 const normalizeOptionalText = (value?: string | null) => {
   if (value === undefined || value === null) return undefined;
@@ -154,22 +207,116 @@ const normalizeIsoDate = (value?: string) => {
   return dateToISODateTime(value);
 };
 
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const calcEndDateFromDuration = (start: string, years: number) => {
+  if (!start || Number.isNaN(years)) return "";
+  const startDate = new Date(start);
+  if (Number.isNaN(startDate.getTime())) return "";
+  const end = new Date(startDate);
+  end.setFullYear(end.getFullYear() + years);
+  end.setDate(end.getDate() - 1);
+  return end.toISOString().slice(0, 10);
+};
+
+const getDateParts = (value?: string) => {
+  const parsed = value ? new Date(value) : new Date();
+  const date = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return { year, month, day, dateOnly: `${year}-${month}-${day}` };
+};
+
+const generateDocumentNumber = (
+  level?: MOULevel,
+  entryDate?: string,
+  existing: MOU[] = []
+) => {
+  if (!level) return "";
+  const { year, month, day, dateOnly } = getDateParts(entryDate);
+  const sequence =
+    existing.filter((item) => {
+      if (item.level !== level) return false;
+      const itemDate = item.entryDate
+        ? getDateParts(item.entryDate).dateOnly
+        : "";
+      return itemDate === dateOnly;
+    }).length + 1;
+
+  return `${level}/${year}/${month}/${day}/${String(sequence).padStart(3, "0")}`;
+};
+
+const extractUnitMeta = (user: AuthUser | null) => {
+  if (!user) return {};
+  const unitArr = Array.isArray(user.unit) ? user.unit : [];
+  const primaryUnit = unitArr[0];
+  const anyUser = user as Record<string, any>;
+  const unitId =
+    user.unitId ||
+    primaryUnit?.id ||
+    anyUser.unit_id ||
+    anyUser.unitCode ||
+    anyUser.unit;
+  const unitName =
+    user.unitName || primaryUnit?.name || anyUser.unit_name || anyUser.unit;
+  const facultyName =
+    user.facultyName ||
+    primaryUnit?.categoryId ||
+    anyUser.fakultas ||
+    anyUser.faculty ||
+    "";
+  const studyProgramName =
+    user.studyProgramName ||
+    (primaryUnit?.isUnit ? primaryUnit.name : undefined) ||
+    anyUser.studyProgramName ||
+    anyUser.programStudi ||
+    anyUser.prodi ||
+    anyUser.studyProgram ||
+    "";
+
+  return {
+    unitId: unitId as string | undefined,
+    unitName: unitName as string | undefined,
+    facultyName: facultyName as string | undefined,
+    studyProgramName: studyProgramName as string | undefined
+  };
+};
+
 // Build payload for create so optional fields become nullish/empty safely
 const buildCreatePayload = (m: Omit<MOU, "id">): KerjasamaRequest => ({
   unitId: normalizeOptionalText(m.unit || m.faculty) || "unknown",
   jenis: m.level,
-  nomorDokumen: normalizeOptionalText(m.documentNumber) ?? null,
+  jenisMitra: normalizeOptionalText(m.partnerType),
+  nomorDokumen: normalizeOptionalText(m.documentNumber),
   judul: m.title.trim(),
   tanggalEntry: normalizeIsoDate(m.entryDate) || new Date().toISOString(),
   tanggalMulai: normalizeIsoDate(m.startDate) || new Date().toISOString(),
   tanggalBerakhir: normalizeIsoDate(m.endDate) || new Date().toISOString(),
-  teleponPengaju: normalizeOptionalText(m.partnerInfo?.phone) ?? null,
-  emailPengaju: normalizeOptionalText(m.partnerInfo?.email) ?? null,
-  lingkup: m.scope.length ? m.scope.join(",") : null,
-  statusProses: normalizeOptionalText(m.processStatus) ?? null,
-  statusPersetujuan: normalizeOptionalText(m.approvalStatus) ?? null,
-  catatanStatus: normalizeOptionalText(m.statusNote) ?? null,
-  lampiranURL: normalizeOptionalText(m.fileUrl) ?? null,
+  teleponPengaju:
+    normalizeOptionalText(
+      m.partnerInfo?.contactWhatsapp || m.partnerInfo?.phone
+    ),
+  emailPengaju: normalizeOptionalText(m.partnerInfo?.email),
+  lingkup: m.scope.length ? m.scope[0] : undefined,
+  namaInstitusi: normalizeOptionalText(m.partner),
+  alamatProvinsi: normalizeOptionalText(m.institutionAddress?.province),
+  alamatKota: normalizeOptionalText(m.institutionAddress?.city),
+  alamatNegara: normalizeOptionalText(m.institutionAddress?.country),
+  kontakNama: normalizeOptionalText(m.partnerInfo?.contactName),
+  kontakJabatan: normalizeOptionalText(m.partnerInfo?.contactTitle),
+  kontakEmail: normalizeOptionalText(m.partnerInfo?.email),
+  kontakWA: normalizeOptionalText(m.partnerInfo?.contactWhatsapp),
+  kontakWebsite: normalizeOptionalText(m.partnerInfo?.website),
+  durasiKerjasama: m.durationYears ?? undefined,
+  statusProses: normalizeOptionalText(m.processStatus),
+  statusPersetujuan: normalizeOptionalText(m.approvalStatus),
+  catatanStatus: normalizeOptionalText(m.statusNote),
+  // Upload dokumen hanya dilakukan saat edit, tidak saat create
+  lampiranURL: undefined,
+  pdfReviewURL: undefined,
+  persetujuanDekan:
+    typeof m.persetujuanDekan === "boolean" ? m.persetujuanDekan : undefined,
   statusDokumen: m.status,
   idDokumenRelasi: m.relatedIds ?? []
 });
@@ -307,6 +454,7 @@ export default function DataAjuanPage() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<MOU[]>([]);
   const [role, setRole] = useState<Role | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [unitMap, setUnitMap] = useState<Record<string, string>>({});
 
   // filters
@@ -329,11 +477,26 @@ export default function DataAjuanPage() {
     const u = getAuth();
     console.log("✅ User authenticated:", u);
     setRole(u?.role ?? null);
+    setAuthUser(u);
+
+    // refresh profile to ensure unit/prodi populated
+    authAPI
+      .fetchProfileAndStore()
+      .then((profile) => {
+        if (profile) {
+          setAuthUser(profile);
+          setRole(profile.role ?? null);
+        }
+      })
+      .catch((err) => {
+        console.warn("Profile refresh failed:", err);
+      });
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === "proto_auth" || e.key === "auth_user") {
         const next = getAuth();
         setRole(next?.role ?? null);
+        setAuthUser(next);
       }
     };
     window.addEventListener("storage", onStorage);
@@ -365,33 +528,51 @@ export default function DataAjuanPage() {
         // map backend kerjasama to frontend MOU type
         const mapped = res.data.map(
           (k) =>
-            ({
-              id: k.id,
-              level: (k.jenis as MOULevel) || "MOU",
-              documentNumber: k.nomorDokumen || "",
-              title: k.judul || "-",
-              entryDate: k.tanggalEntry || new Date().toISOString(),
-              partner: "-",
-              partnerType: "Universitas" as PartnerType,
-              country: "Indonesia",
-              faculty: k.unitId || "",
-              unit: k.unitId || "",
-              scope: k.lingkup ? k.lingkup.split(",") : ["Nasional"],
-              category: "Cooperation" as MOU["category"],
-              department: "-",
-              owner: "-",
-              startDate: k.tanggalMulai || new Date().toISOString(),
-              endDate: k.tanggalBerakhir || new Date().toISOString(),
-              status: (k.statusDokumen as MOUStatus) || "Draft",
-              documents: {
-                suratPermohonanUrl: k.lampiranURL || undefined
-              },
-              processStatus: k.statusProses,
-              approvalStatus: k.statusPersetujuan,
-              statusNote: k.catatanStatus,
-              fileUrl: k.lampiranURL,
-              relatedIds: k.idDokumenRelasi
-            } as MOU)
+          ({
+            id: k.id,
+            level: (k.jenis as MOULevel) || "MOU",
+            documentNumber: k.nomorDokumen || "",
+            title: k.judul || "-",
+            entryDate: k.tanggalEntry || new Date().toISOString(),
+            partner: k.namaInstitusi || "-",
+            partnerType:
+              (k.jenisMitra as PartnerType) || ("Universitas" as PartnerType),
+            country: k.alamatNegara || "Indonesia",
+            faculty: k.unitId || "",
+            unit: k.unitId || "",
+            scope: k.lingkup
+              ? k.lingkup.split(",").map((s) => s.trim()).filter(Boolean)
+              : ["Nasional"],
+            category: "Cooperation" as MOU["category"],
+            department: "-",
+            owner: "-",
+            startDate: k.tanggalMulai || new Date().toISOString(),
+            endDate: k.tanggalBerakhir || new Date().toISOString(),
+            status: (k.statusDokumen as MOUStatus) || "Draft",
+            partnerInfo: {
+              phone: k.teleponPengaju || undefined,
+              email: k.emailPengaju || undefined,
+              contactName: k.kontakNama || undefined,
+              contactTitle: k.kontakJabatan || undefined,
+              contactWhatsapp: k.kontakWA || undefined,
+              website: k.kontakWebsite || undefined
+            },
+            institutionAddress: {
+              province: k.alamatProvinsi || undefined,
+              city: k.alamatKota || undefined,
+              country: k.alamatNegara || undefined
+            },
+            durationYears: k.durasiKerjasama ?? null,
+            persetujuanDekan: k.persetujuanDekan ?? null,
+            documents: {
+              reviewUrl: k.pdfReviewURL || undefined
+            },
+            processStatus: k.statusProses,
+            approvalStatus: k.statusPersetujuan,
+            statusNote: k.catatanStatus,
+            fileUrl: k.lampiranURL,
+            relatedIds: k.idDokumenRelasi
+          } as MOU)
         );
 
         setRows(mapped);
@@ -539,8 +720,10 @@ export default function DataAjuanPage() {
         payload.unitId = normalizeOptionalText(m.unit || m.faculty) ?? undefined;
       }
       if (m.level) payload.jenis = m.level;
+      if (m.partnerType !== undefined)
+        payload.jenisMitra = normalizeOptionalText(m.partnerType);
       if (m.documentNumber !== undefined)
-        payload.nomorDokumen = normalizeOptionalText(m.documentNumber) ?? null;
+        payload.nomorDokumen = normalizeOptionalText(m.documentNumber);
       if (m.title !== undefined) payload.judul = m.title.trim();
       if (m.entryDate !== undefined)
         payload.tanggalEntry = normalizeIsoDate(m.entryDate);
@@ -550,23 +733,57 @@ export default function DataAjuanPage() {
         payload.tanggalBerakhir = normalizeIsoDate(m.endDate);
       if (m.partnerInfo?.phone !== undefined)
         payload.teleponPengaju =
-          normalizeOptionalText(m.partnerInfo.phone) ?? null;
+          normalizeOptionalText(m.partnerInfo.phone);
       if (m.partnerInfo?.email !== undefined)
         payload.emailPengaju =
-          normalizeOptionalText(m.partnerInfo.email) ?? null;
+          normalizeOptionalText(m.partnerInfo.email);
       if (m.scope)
-        payload.lingkup = m.scope.length ? m.scope.join(",") : null;
+        payload.lingkup = m.scope.length ? m.scope[0] : undefined;
+      if (m.partner !== undefined)
+        payload.namaInstitusi = normalizeOptionalText(m.partner);
+      if (m.institutionAddress?.province !== undefined)
+        payload.alamatProvinsi =
+          normalizeOptionalText(m.institutionAddress.province);
+      if (m.institutionAddress?.city !== undefined)
+        payload.alamatKota =
+          normalizeOptionalText(m.institutionAddress.city);
+      if (m.institutionAddress?.country !== undefined)
+        payload.alamatNegara =
+          normalizeOptionalText(m.institutionAddress.country);
+      if (m.partnerInfo?.contactName !== undefined)
+        payload.kontakNama =
+          normalizeOptionalText(m.partnerInfo.contactName);
+      if (m.partnerInfo?.contactTitle !== undefined)
+        payload.kontakJabatan =
+          normalizeOptionalText(m.partnerInfo.contactTitle);
+      if (m.partnerInfo?.email !== undefined)
+        payload.kontakEmail =
+          normalizeOptionalText(m.partnerInfo.email);
+      if (m.partnerInfo?.contactWhatsapp !== undefined)
+        payload.kontakWA =
+          normalizeOptionalText(m.partnerInfo.contactWhatsapp);
+      if (m.partnerInfo?.website !== undefined)
+        payload.kontakWebsite =
+          normalizeOptionalText(m.partnerInfo.website);
+      if (m.durationYears !== undefined)
+        payload.durasiKerjasama = m.durationYears ?? undefined;
       if (m.processStatus !== undefined)
         payload.statusProses =
-          normalizeOptionalText(m.processStatus) ?? null;
+          normalizeOptionalText(m.processStatus);
       if (m.approvalStatus !== undefined)
         payload.statusPersetujuan =
-          normalizeOptionalText(m.approvalStatus) ?? null;
+          normalizeOptionalText(m.approvalStatus);
       if (m.statusNote !== undefined)
         payload.catatanStatus =
-          normalizeOptionalText(m.statusNote) ?? null;
+          normalizeOptionalText(m.statusNote);
+      // Upload dokumen (lampiranURL & pdfReviewURL) bisa di-update saat edit
       if (m.fileUrl !== undefined)
-        payload.lampiranURL = normalizeOptionalText(m.fileUrl) ?? null;
+        payload.lampiranURL = normalizeOptionalText(m.fileUrl);
+      if (m.documents?.reviewUrl !== undefined)
+        payload.pdfReviewURL =
+          normalizeOptionalText(m.documents?.reviewUrl || undefined);
+      if (m.persetujuanDekan !== undefined)
+        payload.persetujuanDekan = m.persetujuanDekan ?? undefined;
       if (m.status) payload.statusDokumen = m.status;
       if (m.relatedIds !== undefined) payload.idDokumenRelasi = m.relatedIds;
 
@@ -650,7 +867,11 @@ export default function DataAjuanPage() {
               <Button variant="outline">Filter Lanjutan</Button>
 
               {canCreate ? (
-                <NewMOUButton onCreate={handleCreate} optionsRows={rows} />
+                <NewMOUButton
+                  onCreate={handleCreate}
+                  optionsRows={rows}
+                  currentUser={authUser}
+                />
               ) : (
                 <TooltipProvider delayDuration={150}>
                   <Tooltip>
@@ -690,7 +911,7 @@ export default function DataAjuanPage() {
                         <TableHead>Tentang</TableHead>
                         <TableHead>Jenis Kerjasama</TableHead>
                         <TableHead>Tanggal Entry</TableHead>
-                        <TableHead>Info Partner</TableHead>
+                        <TableHead>Kontak Institusi</TableHead>
                         <TableHead>Unit</TableHead>
                         <TableHead>Lingkup</TableHead>
                         <TableHead>Masa Berlaku</TableHead>
@@ -726,6 +947,11 @@ export default function DataAjuanPage() {
                                   >
                                     {row.title}
                                   </a>
+                                  {row.partner && row.partner !== "—" && (
+                                    <div className="text-xs text-muted-foreground">
+                                      Institusi: {row.partner}
+                                    </div>
+                                  )}
 
                                   {/* relasi */}
                                   {related.length > 0 && (
@@ -765,27 +991,58 @@ export default function DataAjuanPage() {
                               <TableCell>{fmtDate(row.entryDate)}</TableCell>
 
                               <TableCell>
-                                <div className="text-sm">
-                                  {row.partnerInfo?.phone ? (
-                                    <>
-                                      Telepon / HP Pengaju:
-                                      <br />
-                                      {row.partnerInfo.phone}
-                                      <br />
-                                    </>
+                                <div className="text-sm space-y-1">
+                                  {row.partnerInfo?.contactName ? (
+                                    <div className="font-medium">
+                                      {row.partnerInfo.contactName}
+                                      {row.partnerInfo.contactTitle
+                                        ? ` — ${row.partnerInfo.contactTitle}`
+                                        : ""}
+                                    </div>
                                   ) : null}
                                   {row.partnerInfo?.email ? (
-                                    <>
-                                      Email Pengaju:
-                                      <br />
+                                    <div>
+                                      <span className="text-xs text-muted-foreground">
+                                        Email:
+                                      </span>{" "}
                                       <a
                                         className="text-blue-600 hover:underline"
                                         href={`mailto:${row.partnerInfo.email}`}
                                       >
                                         {row.partnerInfo.email}
                                       </a>
-                                    </>
+                                    </div>
                                   ) : null}
+                                  {row.partnerInfo?.contactWhatsapp ||
+                                    row.partnerInfo?.phone ? (
+                                    <div>
+                                      <span className="text-xs text-muted-foreground">
+                                        WA/Telepon:
+                                      </span>{" "}
+                                      {row.partnerInfo.contactWhatsapp ||
+                                        row.partnerInfo.phone}
+                                    </div>
+                                  ) : null}
+                                  {row.partnerInfo?.website ? (
+                                    <div className="truncate">
+                                      <span className="text-xs text-muted-foreground">
+                                        Website:
+                                      </span>{" "}
+                                      <a
+                                        className="text-blue-600 hover:underline"
+                                        href={row.partnerInfo.website}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        {row.partnerInfo.website}
+                                      </a>
+                                    </div>
+                                  ) : null}
+                                  {!row.partnerInfo && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Kontak belum diisi
+                                    </span>
+                                  )}
                                 </div>
                               </TableCell>
 
@@ -846,6 +1103,11 @@ export default function DataAjuanPage() {
                                     title="Dokumen Draf Ajuan"
                                     file={row.documents?.draftAjuanFile || null}
                                     url={row.documents?.draftAjuanUrl || null}
+                                  />
+                                  <DocRow
+                                    title="Hasil Review (PDF)"
+                                    file={row.documents?.reviewFile || null}
+                                    url={row.documents?.reviewUrl || null}
                                   />
                                 </div>
                               </TableCell>
@@ -950,7 +1212,7 @@ export default function DataAjuanPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Ajuan</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus ajuan "{deleteTarget?.title}"?
+              Apakah Anda yakin ingin menghapus ajuan {deleteTarget?.title}?
               Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1090,112 +1352,103 @@ function MultiSelectScope({
 }
 
 /** ========================================================================
- *  UnitDropdown: dropdown untuk memilih unit dari API
- *  ===================================================================== */
-function UnitDropdown({
-  value,
-  onChange,
-  placeholder = "Pilih Unit"
-}: {
-  value?: string;
-  onChange: (unitId: string) => void;
-  placeholder?: string;
-}) {
-  const [units, setUnits] = useState<{ id: string; name: string }[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  // Load units from API
-  useEffect(() => {
-    const loadUnits = async () => {
-      setLoading(true);
-      try {
-        const response = await unitAPI.getAllUnits();
-        if (response.status === "success") {
-          setUnits(response.data);
-        } else {
-          toast.error("Gagal memuat data unit");
-        }
-      } catch (error) {
-        console.error("Failed to load units:", error);
-        toast.error("Gagal memuat data unit");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadUnits();
-  }, []);
-
-  const selectedUnit = units.find((unit) => unit.id === value);
-
-  return (
-    <Select
-      value={selectedUnit ? selectedUnit.id : undefined}
-      onValueChange={(v) => onChange(v)}
-      disabled={loading}
-    >
-      <SelectTrigger className="w-full">
-        <SelectValue
-          placeholder={loading ? "Memuat..." : placeholder}
-          aria-label={selectedUnit?.name || placeholder}
-        />
-      </SelectTrigger>
-      <SelectContent>
-        {units.length === 0 ? (
-          <SelectItem value="__empty" disabled>
-            {loading ? "Memuat..." : "Unit belum tersedia"}
-          </SelectItem>
-        ) : (
-          units.map((unit) => (
-            <SelectItem key={unit.id} value={unit.id}>
-              {unit.name}
-            </SelectItem>
-          ))
-        )}
-      </SelectContent>
-    </Select>
-  );
-}
-
-/** ========================================================================
  *  NewMOUButton: tambah entri baru (default Draft & Pending)
  *  ===================================================================== */
 function NewMOUButton({
   onCreate,
-  optionsRows
+  optionsRows,
+  currentUser
 }: {
   onCreate: (m: Omit<MOU, "id">) => Promise<void> | void;
   optionsRows: MOU[];
+  currentUser: AuthUser | null;
 }) {
   const [open, setOpen] = useState(false);
 
   const [level, setLevel] = useState<MOULevel | undefined>();
   const [documentNumber, setDocumentNumber] = useState("");
   const [title, setTitle] = useState("");
-  const [entryDate, setEntryDate] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [unitId, setUnitId] = useState("");
+  const [entryDate, setEntryDate] = useState(todayISO());
 
-  // ⬇️ ganti dari string ke array
-  const [scopes, setScopes] = useState<string[]>(["Domestik", "Kabupaten"]);
+  const [partnerType, setPartnerType] =
+    useState<PartnerType>("Universitas");
+  const [lingkup, setLingkup] =
+    useState<(typeof LINGKUP_OPTIONS)[number]>("Nasional");
+  const [institutionName, setInstitutionName] = useState("");
+  const [address, setAddress] = useState<InstitutionAddress>({});
+  const [contactName, setContactName] = useState("");
+  const [contactTitle, setContactTitle] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactWhatsapp, setContactWhatsapp] = useState("");
+  const [contactWebsite, setContactWebsite] = useState("");
+
+  const [unitId, setUnitId] = useState("");
+  const [unitMeta, setUnitMeta] = useState<{ studyProgramName?: string }>({});
+  const [hasDeanApproval, setHasDeanApproval] = useState(
+    currentUser?.role !== "PRODI"
+  );
 
   const [startDate, setStartDate] = useState("");
+  const [durationYears, setDurationYears] = useState<number>(1);
   const [endDate, setEndDate] = useState("");
-  const [suratPermohonanUrl, setSuratPermohonanUrl] = useState("");
-  const [proposalUrl, setProposalUrl] = useState("");
-  const [draftAjuanUrl, setDraftAjuanUrl] = useState("");
-  const [processStatus, setProcessStatus] = useState("Pengajuan Unit Ke LKI");
-  const [approvalStatus, setApprovalStatus] = useState("Menunggu Persetujuan"); // default pending
-  const [statusNote, setStatusNote] = useState("");
-  const [fileUrl, setFileUrl] = useState("");
+
+  const [processStatus, setProcessStatus] =
+    useState<(typeof PROCESS_OPTIONS)[number]>("Pengajuan");
 
   // relasi (opsional)
   const [relatedSearch, setRelatedSearch] = useState("");
   const [relatedIds, setRelatedIds] = useState<string[]>([]);
 
-  const canSave =
-    level && title.trim() && entryDate && unitId.trim() && startDate && endDate;
+  const isProdi = currentUser?.role === "PRODI";
+
+  useEffect(() => {
+    setHasDeanApproval(currentUser?.role !== "PRODI");
+    const meta = extractUnitMeta(currentUser);
+    setUnitMeta((prev) => ({
+      studyProgramName: meta.studyProgramName || prev.studyProgramName
+    }));
+
+    if (meta.unitId && !unitId) {
+      setUnitId(meta.unitId);
+    }
+  }, [currentUser, unitId]);
+
+  useEffect(() => {
+    if (!open) return;
+    setEntryDate((prev) => prev || todayISO());
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const defaultTitle = currentUser?.role
+      ? `Peran ${currentUser.role}`
+      : "Pengaju";
+    const defaultName = currentUser?.name || currentUser?.username || "";
+    const defaultEmail = currentUser?.email || "";
+
+    setContactName((prev) => prev || defaultName);
+    setContactTitle((prev) => prev || defaultTitle);
+    setContactEmail((prev) => prev || defaultEmail);
+  }, [open, currentUser]);
+
+  useEffect(() => {
+    setEndDate(calcEndDateFromDuration(startDate, durationYears));
+  }, [startDate, durationYears]);
+
+  useEffect(() => {
+    if (!open || !level) return;
+    const nextDocNumber = generateDocumentNumber(level, entryDate, optionsRows);
+    setDocumentNumber(nextDocNumber);
+  }, [open, level, entryDate, optionsRows]);
+
+  useEffect(() => {
+    setAddress((prev) => {
+      if (lingkup === "Nasional") {
+        return { province: prev.province || "", city: prev.city || "" };
+      }
+      return { country: prev.country || "" };
+    });
+  }, [lingkup]);
 
   const toggleRelated = (id: string) => {
     setRelatedIds((prev) =>
@@ -1212,10 +1465,28 @@ function NewMOUButton({
           .join(" ")
           .toLowerCase()
           .includes(t);
-      const typeMatch = level ? r.level !== level : true; // tidak boleh relasi ke jenis yg sama
+      const typeMatch = level ? r.level !== level : true;
       return textMatch && typeMatch;
     });
   }, [optionsRows, relatedSearch, level]);
+
+  const hasAddress =
+    lingkup === "Nasional"
+      ? Boolean((address.province || "").trim() && (address.city || "").trim())
+      : Boolean((address.country || "").trim());
+
+  const hasDocumentNumber = documentNumber.trim().length > 0;
+  const canSave =
+    level &&
+    hasDocumentNumber &&
+    title.trim() &&
+    entryDate &&
+    unitId.trim() &&
+    startDate &&
+    endDate &&
+    institutionName.trim() &&
+    hasAddress &&
+    (!isProdi || hasDeanApproval);
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -1232,42 +1503,44 @@ function NewMOUButton({
       documentNumber: documentNumber.trim(),
       title: title.trim(),
       entryDate,
-      partner: "—",
-      partnerType: "Universitas",
+      partner: institutionName.trim(),
+      partnerType,
       partnerInfo: {
-        phone: phone.trim() || undefined,
-        email: email.trim() || undefined
+        phone: contactWhatsapp.trim() || undefined,
+        email: contactEmail.trim() || undefined,
+        contactName: contactName.trim() || undefined,
+        contactTitle: contactTitle.trim() || undefined,
+        contactWhatsapp: contactWhatsapp.trim() || undefined,
+        website: contactWebsite.trim() || undefined
       },
-      country: "Indonesia",
+      country: lingkup === "Nasional" ? "Indonesia" : address.country || "",
       faculty: unitId.trim(),
       unit: unitId.trim(),
-
-      // ⬇️ pakai array langsung
-      scope: scopes,
-
+      scope: [lingkup],
       category: "Cooperation",
       department: "-",
       owner: "-",
       startDate,
       endDate,
-      status: "Draft", // default Draft di halaman ajuan
-      documents: {
-        suratPermohonanUrl: suratPermohonanUrl.trim() || null,
-        proposalUrl: proposalUrl.trim() || null,
-        draftAjuanUrl: draftAjuanUrl.trim() || null
-      },
+      status: "Draft",
+      // Dokumen tidak di-upload saat create, hanya saat edit
+      documents: undefined,
+      institutionAddress: address,
+      durationYears,
+      persetujuanDekan: hasDeanApproval,
       processStatus: processStatus.trim() || undefined,
-      approvalStatus:
-        (approvalStatus || "Menunggu Persetujuan").trim() ||
-        "Menunggu Persetujuan",
-      statusNote: statusNote.trim() || undefined,
-      fileUrl: fileUrl.trim() || undefined,
-
+      approvalStatus: isProdi
+        ? "Disetujui Dekan"
+        : "Menunggu Persetujuan",
+      statusNote: undefined,
+      fileUrl: undefined, // Upload dokumen hanya di edit
       value: undefined,
       signDate: undefined,
-      studyProgram: undefined,
-      notes: undefined,
-
+      studyProgram: unitMeta.studyProgramName,
+      notes:
+        lingkup === "Nasional"
+          ? [address.city, address.province].filter(Boolean).join(", ")
+          : address.country,
       relatedIds: sanitizedRelated.length ? sanitizedRelated : undefined
     };
 
@@ -1275,7 +1548,6 @@ function NewMOUButton({
       await onCreate(payload);
       setOpen(false);
     } catch (err) {
-      // leave open to show error
       console.error("Create failed", err);
     }
   };
@@ -1295,148 +1567,308 @@ function NewMOUButton({
         </SheetHeader>
 
         <div className="mt-6 grid gap-4">
-          {/* Jenis + Nomor */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* Jenis mitra + Lingkup */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
-              <label className="text-sm font-medium">Jenis Kerjasama</label>
+              <label className="text-sm font-medium">Jenis Mitra</label>
               <Select
-                value={level}
-                onValueChange={(v) => setLevel(v as MOULevel)}
+                value={partnerType}
+                onValueChange={(v) => setPartnerType(v as PartnerType)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Pilih" />
+                  <SelectValue placeholder="Pilih jenis mitra" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="MOU">MOU</SelectItem>
-                  <SelectItem value="MOA">MOA</SelectItem>
-                  <SelectItem value="IA">IA</SelectItem>
+                  {PARTNER_TYPE_OPTIONS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2 sm:col-span-2">
-              <label className="text-sm font-medium">No. Dokumen</label>
-              <Input
-                placeholder="mis. 001/MOA/FT/2025"
-                value={documentNumber}
-                onChange={(e) => setDocumentNumber(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Tentang */}
-          <div className="grid gap-2">
-            <label className="text-sm font-medium">Tentang</label>
-            <Input
-              placeholder="Judul/Perihal Kerjasama"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-
-          {/* Tanggal Entry + Masa Berlaku */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Tanggal Entry</label>
-              <Input
-                type="date"
-                value={entryDate}
-                onChange={(e) => setEntryDate(e.target.value)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Mulai</label>
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Selesai</label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Info Partner */}
-          <div className="grid gap-2">
-            <label className="text-sm font-medium">Info Partner</label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Input
-                placeholder="Telepon/HP Pengaju"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-              <Input
-                placeholder="Email Pengaju"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Unit + Lingkup (Multi-select) */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Unit</label>
-              <UnitDropdown value={unitId} onChange={setUnitId} />
-            </div>
             <div className="grid gap-2">
               <label className="text-sm font-medium">Lingkup</label>
-              <MultiSelectScope value={scopes} onChange={setScopes} />
-              <div className="text-xs text-muted-foreground">
-                Bisa pilih lebih dari satu.
-              </div>
+              <Select
+                value={lingkup}
+                onValueChange={(v) =>
+                  setLingkup(v as (typeof LINGKUP_OPTIONS)[number])
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih lingkup" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LINGKUP_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          {/* Status Proses + Persetujuan */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Status Proses</label>
-              <Input
-                value={processStatus}
-                onChange={(e) => setProcessStatus(e.target.value)}
-              />
-              <div className="text-xs text-muted-foreground">
-                Contoh: Pengajuan Unit Ke LKI
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium">Status Persetujuan</label>
-              <Input
-                value={approvalStatus}
-                onChange={(e) => setApprovalStatus(e.target.value)}
-              />
-              <div className="text-xs text-muted-foreground">
-                Biarkan "Menunggu Persetujuan" untuk pending.
-              </div>
-            </div>
-          </div>
-
+          {/* Nama Institusi */}
           <div className="grid gap-2">
-            <label className="text-sm font-medium">Catatan Status</label>
-            <Textarea
-              rows={2}
-              value={statusNote}
-              onChange={(e) => setStatusNote(e.target.value)}
-            />
-          </div>
-
-          {/* Lampiran umum (URL) */}
-          <div className="grid gap-2">
-            <label className="text-sm font-medium">
-              Lampiran Umum (URL) — link pada kolom “Tentang”
-            </label>
+            <label className="text-sm font-medium">Nama Institusi</label>
             <Input
-              placeholder="https://.../dokumen.pdf"
-              value={fileUrl}
-              onChange={(e) => setFileUrl(e.target.value)}
+              placeholder="Contoh: Universitas Teknologi Nusantara"
+              value={institutionName}
+              onChange={(e) => setInstitutionName(e.target.value)}
             />
           </div>
+
+          {/* Alamat */}
+          <div className="grid gap-3">
+            <label className="text-sm font-medium">Alamat Institusi</label>
+            {lingkup === "Nasional" ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Select
+                  value={address.province}
+                  onValueChange={(v) =>
+                    setAddress((prev) => ({ ...prev, province: v, city: "" }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih provinsi" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROVINCES.map((p) => (
+                      <SelectItem key={p.name} value={p.name}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={address.city}
+                  onValueChange={(v) =>
+                    setAddress((prev) => ({ ...prev, city: v }))
+                  }
+                  disabled={!address.province}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih kota/kabupaten" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(PROVINCES.find((p) => p.name === address.province)
+                      ?.cities || []
+                    ).map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <Select
+                value={address.country}
+                onValueChange={(v) =>
+                  setAddress((prev) => ({ ...prev, country: v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih negara" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COUNTRIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Kontak (auto, disembunyikan dari UI) */}
+          <div className="hidden">
+            <Input
+              placeholder="Nama PIC"
+              value={contactName}
+              onChange={(e) => setContactName(e.target.value)}
+              aria-hidden
+            />
+            <Input
+              placeholder="Jabatan"
+              value={contactTitle}
+              onChange={(e) => setContactTitle(e.target.value)}
+              aria-hidden
+            />
+            <Input
+              placeholder="Email"
+              type="email"
+              value={contactEmail}
+              onChange={(e) => setContactEmail(e.target.value)}
+              aria-hidden
+            />
+            <Input
+              placeholder="No. WA (opsional)"
+              value={contactWhatsapp}
+              onChange={(e) => setContactWhatsapp(e.target.value)}
+              aria-hidden
+            />
+            <Input
+              placeholder="Website (opsional)"
+              value={contactWebsite}
+              onChange={(e) => setContactWebsite(e.target.value)}
+              aria-hidden
+            />
+          </div>
+
+          {/* Nomor & tanggal MOU */}
+          <div className="grid gap-3">
+            <label className="text-sm font-medium">
+              Nomor &amp; Tanggal MOU
+            </label>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Jenis Kerjasama
+                </label>
+                <Select
+                  value={level}
+                  onValueChange={(v) => setLevel(v as MOULevel)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Pilih jenis dokumen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="MOU">MOU</SelectItem>
+                    <SelectItem value="MOA">MOA</SelectItem>
+                    <SelectItem value="IA">IA</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  No. Dokumen
+                </label>
+                <Input
+                  placeholder="Akan terisi otomatis"
+                  value={documentNumber}
+                  readOnly
+                />
+               
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Tanggal Entry
+                </label>
+                <Input
+                  type="date"
+                  value={entryDate}
+                  onChange={(e) => setEntryDate(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Tentang
+                </label>
+                <Input
+                  placeholder="Judul/Perihal Kerjasama"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Tanggal mulai & durasi */}
+          <div className="grid gap-3">
+            <label className="text-sm font-medium">
+              Tanggal Mulai &amp; Durasi
+            </label>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Mulai
+                </label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Durasi Kerjasama
+                </label>
+                <Select
+                  value={String(durationYears)}
+                  onValueChange={(v) => setDurationYears(Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Durasi tahun" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DURATION_OPTIONS.map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {d} tahun
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Tanggal Berakhir (otomatis)
+                </label>
+                <Input type="date" value={endDate} readOnly />
+              </div>
+            </div>
+          </div>
+
+          {/* Status proses */}
+          <div className="grid gap-2">
+            <label className="text-sm font-medium">Status Proses</label>
+            <Select
+              value={processStatus}
+              onValueChange={(v) =>
+                setProcessStatus(
+                  v as (typeof PROCESS_OPTIONS)[number]
+                )
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Pilih status proses" />
+              </SelectTrigger>
+              <SelectContent>
+                {PROCESS_OPTIONS.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Persetujuan dekan */}
+          {isProdi ? (
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div>
+                <div className="text-sm font-medium">Persetujuan Dekan</div>
+                <div className="text-xs text-muted-foreground">
+                  Wajib dicentang untuk Prodi
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={hasDeanApproval}
+                  onCheckedChange={(v) => setHasDeanApproval(Boolean(v))}
+                />
+                <span className="text-sm">Sudah disetujui</span>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-md border p-3 text-xs text-muted-foreground">
+              Persetujuan dekan tidak wajib untuk peran {currentUser?.role || "-"}.
+            </div>
+          )}
 
           {/* Relasi (opsional) */}
           <div className="grid gap-3 border-t pt-4">

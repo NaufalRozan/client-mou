@@ -1,21 +1,34 @@
 import { apiClient } from './client';
 
 export interface KerjasamaRequest {
-  unitId: string;
-  jenis: string; // MOU | MOA | IA
-  nomorDokumen?: string | null;
-  judul: string;
-  tanggalEntry: string;
-  tanggalMulai: string;
-  tanggalBerakhir: string;
-  teleponPengaju?: string | null;
-  emailPengaju?: string | null;
-  lingkup?: string | null; // comma separated or single
-  statusProses?: string | null;
-  statusPersetujuan?: string | null;
-  catatanStatus?: string | null;
-  lampiranURL?: string | null;
+  unitId?: string;
+  jenis?: string; // MOU | MOA | IA
+  nomorDokumen?: string;
+  judul?: string;
+  tanggalEntry?: string;
+  tanggalMulai?: string;
+  tanggalBerakhir?: string;
+  teleponPengaju?: string;
+  emailPengaju?: string;
+  jenisMitra?: string; // Universitas | Dudika | Pemerintah | NGO | dll
+  lingkup?: string; // Nasional | Internasional | Regional
+  namaInstitusi?: string;
+  alamatProvinsi?: string;
+  alamatKota?: string;
+  alamatNegara?: string;
+  kontakNama?: string;
+  kontakJabatan?: string;
+  kontakEmail?: string;
+  kontakWA?: string;
+  kontakWebsite?: string;
+  durasiKerjasama?: number;
+  statusProses?: string; // Pengajuan | Proses | Disetujui | Ditolak
+  statusPersetujuan?: string;
   statusDokumen?: string;
+  catatanStatus?: string;
+  persetujuanDekan?: boolean;
+  pdfReviewURL?: string;
+  lampiranURL?: string;
   idDokumenRelasi?: string[];
 }
 
@@ -30,12 +43,25 @@ export interface Kerjasama {
   tanggalBerakhir?: string;
   teleponPengaju?: string | null;
   emailPengaju?: string | null;
+  jenisMitra?: string | null;
   lingkup?: string | null;
+  namaInstitusi?: string | null;
+  alamatProvinsi?: string | null;
+  alamatKota?: string | null;
+  alamatNegara?: string | null;
+  kontakNama?: string | null;
+  kontakJabatan?: string | null;
+  kontakEmail?: string | null;
+  kontakWA?: string | null;
+  kontakWebsite?: string | null;
+  durasiKerjasama?: number | null;
   statusProses?: string | null;
   statusPersetujuan?: string | null;
+  statusDokumen?: string | null;
   catatanStatus?: string | null;
+  persetujuanDekan?: boolean | null;
+  pdfReviewURL?: string | null;
   lampiranURL?: string | null;
-  statusDokumen?: string;
   idDokumenRelasi?: string[];
   createdAt?: string;
   updatedAt?: string;

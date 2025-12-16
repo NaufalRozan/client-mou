@@ -384,7 +384,8 @@ export default function UnitPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Hapus Unit</AlertDialogTitle>
             <AlertDialogDescription>
-              Apakah Anda yakin ingin menghapus unit <strong>"{unitToDelete?.name}"</strong>?
+              Apakah Anda yakin ingin menghapus unit{" "}
+              <strong>{unitToDelete?.name}</strong>?
               <br />
               Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
