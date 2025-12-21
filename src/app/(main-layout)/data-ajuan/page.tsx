@@ -43,14 +43,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 
 import {
-  Calendar as CalendarIcon,
   Search,
   FileSignature,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
   Eye,
-  FileDown,
   ChevronsUpDown,
   MoreHorizontal,
   Trash2
@@ -188,11 +185,6 @@ const fmtDate = (iso: string) =>
     month: "short",
     year: "numeric"
   }).format(new Date(iso));
-
-const daysBetween = (startISO: string, endISO: string) => {
-  const ms = new Date(endISO).getTime() - new Date(startISO).getTime();
-  return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
-};
 
 const FLOW_STATUS_LABEL: Record<FlowStatus, string> = {
   DRAFT: "Draft",
@@ -390,15 +382,6 @@ const dateToISODateTime = (dateString: string): string => {
   const date = new Date(dateString);
   return date.toISOString();
 };
-
-function DateBadge({ date }: { date: string }) {
-  return (
-    <Badge variant="secondary" className="font-normal">
-      <CalendarIcon className="mr-1 h-3.5 w-3.5" />
-      {fmtDate(date)}
-    </Badge>
-  );
-}
 
 /* ============== Dummy data awal (contoh) ============== */
 const initialData: MOU[] = [
@@ -1055,20 +1038,15 @@ export default function DataAjuanPage() {
             ) : (
               <>
                 <div className="relative overflow-x-auto rounded-md border">
-                  <Table className="min-w-[1200px]">
+                  <Table className="min-w-[960px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[50px]">No</TableHead>
                         <TableHead>Tentang</TableHead>
-                        <TableHead>Jenis Kerjasama</TableHead>
-                        <TableHead>Tanggal Entry</TableHead>
-                        <TableHead>Kontak Institusi</TableHead>
+                        <TableHead>Jenis</TableHead>
                         <TableHead>Unit</TableHead>
-                        <TableHead>Lingkup</TableHead>
-                        <TableHead>Masa Berlaku</TableHead>
-                        <TableHead>Dokumen</TableHead>
-                        <TableHead>Status Proses</TableHead>
-                        <TableHead>Catatan Status</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Catatan</TableHead>
                         <TableHead className="text-right">Aksi</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1076,15 +1054,10 @@ export default function DataAjuanPage() {
                     <TableBody>
                       {pageRows.length ? (
                         pageRows.map((row, idx) => {
-                          const masaHari = daysBetween(
-                            row.startDate,
-                            row.endDate
-                          );
                           const flow = (row.flowStatus ||
                             (typeof row.status === "string"
                               ? (row.status.toUpperCase() as FlowStatus)
                               : undefined)) as FlowStatus | undefined;
-                          const allowed = row.allowedActions || [];
                           const related = (row.relatedIds || [])
                             .map((id) => rows.find((r) => r.id === id))
                             .filter(Boolean) as MOU[];
@@ -1109,21 +1082,27 @@ export default function DataAjuanPage() {
 
                               <TableCell>
                                 <div className="space-y-1">
-                                  <a
-                                    className="font-medium text-blue-600 hover:underline"
-                                    href={row.fileUrl || "#"}
-                                    target="_blank"
-                                    rel="noreferrer"
+                                  <Link
+                                    className="font-semibold text-blue-600 hover:underline"
+                                    href={`/data-ajuan/${encodeURIComponent(
+                                      row.id
+                                    )}`}
                                   >
                                     {row.title}
-                                  </a>
-                                  {row.partner && row.partner !== "—" && (
-                                    <div className="text-xs text-muted-foreground">
-                                      Institusi: {row.partner}
-                                    </div>
-                                  )}
-
-                                  {/* relasi */}
+                                  </Link>
+                                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                    <span>
+                                      Institusi:{" "}
+                                      {row.partner && row.partner !== "—"
+                                        ? row.partner
+                                        : "-"}
+                                    </span>
+                                    <span className="hidden sm:inline">•</span>
+                                    <span>Diajukan {fmtDate(row.entryDate)}</span>
+                                  </div>
+                                  <div className="text-[11px] text-muted-foreground">
+                                    ID: {row.id}
+                                  </div>
                                   {related.length > 0 && (
                                     <div className="flex flex-wrap gap-1 pt-1">
                                       {related.map((r) => (
@@ -1150,7 +1129,7 @@ export default function DataAjuanPage() {
 
                               <TableCell>
                                 <div className="space-y-1">
-                                  <div className="font-medium">{row.level}</div>
+                                  <Badge variant="secondary">{row.level}</Badge>
                                   <div className="text-xs text-muted-foreground">
                                     {row.documentNumber ||
                                       "Belum Masuk " + row.level}
@@ -1158,131 +1137,16 @@ export default function DataAjuanPage() {
                                 </div>
                               </TableCell>
 
-                              <TableCell>{fmtDate(row.entryDate)}</TableCell>
-
                               <TableCell>
-                                <div className="text-sm space-y-1">
-                                  {row.partnerInfo?.contactName ? (
-                                    <div className="font-medium">
-                                      {row.partnerInfo.contactName}
-                                      {row.partnerInfo.contactTitle
-                                        ? ` — ${row.partnerInfo.contactTitle}`
-                                        : ""}
-                                    </div>
-                                  ) : null}
-                                  {row.partnerInfo?.email ? (
-                                    <div>
-                                      <span className="text-xs text-muted-foreground">
-                                        Email:
-                                      </span>{" "}
-                                      <a
-                                        className="text-blue-600 hover:underline"
-                                        href={`mailto:${row.partnerInfo.email}`}
-                                      >
-                                        {row.partnerInfo.email}
-                                      </a>
-                                    </div>
-                                  ) : null}
-                                  {row.partnerInfo?.contactWhatsapp ||
-                                    row.partnerInfo?.phone ? (
-                                    <div>
-                                      <span className="text-xs text-muted-foreground">
-                                        WA/Telepon:
-                                      </span>{" "}
-                                      {row.partnerInfo.contactWhatsapp ||
-                                        row.partnerInfo.phone}
-                                    </div>
-                                  ) : null}
-                                  {row.partnerInfo?.website ? (
-                                    <div className="truncate">
-                                      <span className="text-xs text-muted-foreground">
-                                        Website:
-                                      </span>{" "}
-                                      <a
-                                        className="text-blue-600 hover:underline"
-                                        href={row.partnerInfo.website}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                      >
-                                        {row.partnerInfo.website}
-                                      </a>
-                                    </div>
-                                  ) : null}
-                                  {!row.partnerInfo && (
-                                    <span className="text-xs text-muted-foreground">
-                                      Kontak belum diisi
-                                    </span>
-                                  )}
+                                <div className="text-sm">
+                                  {unitMap[row.unit || row.faculty || ""] ||
+                                    row.faculty ||
+                                    row.unit ||
+                                    "-"}
                                 </div>
                               </TableCell>
 
-                              <TableCell>
-                                {unitMap[row.unit || row.faculty || ""] ||
-                                  row.faculty ||
-                                  row.unit ||
-                                  "-"}
-                              </TableCell>
-
-                              <TableCell>
-                                <ul className="text-sm list-disc pl-4">
-                                  {row.scope.map((s) => (
-                                    <li key={s}>*{s}</li>
-                                  ))}
-                                </ul>
-                              </TableCell>
-
-                              <TableCell>
-                                <div className="text-sm space-y-1">
-                                  <div>
-                                    Tanggal Mulai
-                                    <br />
-                                    <DateBadge date={row.startDate} />
-                                  </div>
-                                  <div>
-                                    Tanggal Berakhir
-                                    <br />
-                                    <DateBadge date={row.endDate} />
-                                  </div>
-                                  <div className="pt-1">
-                                    Masa Berlaku :{" "}
-                                    {masaHari.toString().padStart(2, "0")} Hari
-                                  </div>
-                                </div>
-                              </TableCell>
-
-                              <TableCell>
-                                <div className="text-sm space-y-4">
-                                  <DocRow
-                                    title="Dokumen Surat Permohonan"
-                                    file={
-                                      row.documents?.suratPermohonanFile || null
-                                    }
-                                    url={
-                                      row.documents?.suratPermohonanUrl || null
-                                    }
-                                  />
-
-                                  <DocRow
-                                    title="Dokumen Proposal"
-                                    file={row.documents?.proposalFile || null}
-                                    url={row.documents?.proposalUrl || null}
-                                    emptyClass="text-rose-600"
-                                  />
-
-                                  <DocRow
-                                    title="Dokumen Draf Ajuan"
-                                    file={row.documents?.draftAjuanFile || null}
-                                    url={row.documents?.draftAjuanUrl || null}
-                                  />
-                                  <DocRow
-                                    title="Hasil Review (PDF)"
-                                    file={row.documents?.reviewFile || null}
-                                    url={row.documents?.reviewUrl || null}
-                                  />
-                                </div>
-                              </TableCell>
-
-                              <TableCell>
+                              <TableCell className="text-sm">
                                 <div className="space-y-2">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <Badge variant="secondary">
@@ -1295,31 +1159,21 @@ export default function DataAjuanPage() {
                                       </Badge>
                                     ) : null}
                                   </div>
-
-                                  {row.revisionRequestedBy ? (
-                                    <div className="text-xs text-amber-700">
-                                      Diminta revisi oleh{" "}
-                                      {row.revisionRequestedBy}
+                                  {row.processStatus ? (
+                                    <div className="text-xs text-muted-foreground">
+                                      {row.processStatus}
                                     </div>
                                   ) : null}
-
-                                  {allowed.length ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      {allowed.map((act) => (
-                                        <Badge
-                                          key={act}
-                                          variant="outline"
-                                          className="text-[11px]"
-                                        >
-                                          {act.replace("_", " ")}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  ) : (
+                                  {row.approvalStatus ? (
                                     <div className="text-xs text-muted-foreground">
-                                      Tidak ada aksi tersedia
+                                      Persetujuan: {row.approvalStatus}
                                     </div>
-                                  )}
+                                  ) : null}
+                                  {row.revisionRequestedBy ? (
+                                    <div className="text-xs text-amber-700">
+                                      Revisi oleh {row.revisionRequestedBy}
+                                    </div>
+                                  ) : null}
                                 </div>
                               </TableCell>
 
@@ -1386,7 +1240,7 @@ export default function DataAjuanPage() {
                       ) : (
                         <TableRow>
                           <TableCell
-                            colSpan={12}
+                            colSpan={7}
                             className="h-24 text-center text-sm text-muted-foreground"
                           >
                             Tidak ada data pending.
@@ -1449,57 +1303,6 @@ export default function DataAjuanPage() {
         </AlertDialogContent>
       </AlertDialog>
     </ContentLayout>
-  );
-}
-
-/* ====== Komponen kecil untuk 1 jenis dokumen (judul + aksi) ====== */
-function DocRow({
-  title,
-  file,
-  url,
-  emptyClass = "text-muted-foreground"
-}: {
-  title: string;
-  file: DocFile;
-  url: string | null;
-  emptyClass?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <h4 className="text-sm font-medium">{title}</h4>
-      </div>
-
-      <div className="space-y-1">
-        {file ? (
-          <a
-            className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-            href={file.url}
-            download={file.name || "dokumen.pdf"}
-          >
-            <FileDown className="h-3.5 w-3.5" />
-            Download file
-          </a>
-        ) : null}
-
-        {url ? (
-          <div>
-            <a
-              className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              title={url}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              Lihat file
-            </a>
-          </div>
-        ) : null}
-
-        {!file && !url ? <span className={emptyClass}>Tidak Ada</span> : null}
-      </div>
-    </div>
   );
 }
 
@@ -1639,19 +1442,6 @@ function NewMOUButton({
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
-    const defaultTitle = currentUser?.role
-      ? `Peran ${currentUser.role}`
-      : "Pengaju";
-    const defaultName = currentUser?.name || currentUser?.username || "";
-    const defaultEmail = currentUser?.email || "";
-
-    setContactName((prev) => prev || defaultName);
-    setContactTitle((prev) => prev || defaultTitle);
-    setContactEmail((prev) => prev || defaultEmail);
-  }, [open, currentUser]);
-
-  useEffect(() => {
     setEndDate(calcEndDateFromDuration(startDate, durationYears));
   }, [startDate, durationYears]);
 
@@ -1705,6 +1495,9 @@ function NewMOUButton({
     startDate &&
     endDate &&
     institutionName.trim() &&
+    contactName.trim() &&
+    contactTitle.trim() &&
+    contactEmail.trim() &&
     hasAddress &&
     (!isProdi || hasDeanApproval);
 
@@ -1788,6 +1581,10 @@ function NewMOUButton({
         </SheetHeader>
 
         <div className="mt-6 grid gap-4">
+          <div className="text-sm font-semibold">
+            Detail informasi institusi
+          </div>
+
           {/* Jenis mitra + Lingkup */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
@@ -1832,7 +1629,9 @@ function NewMOUButton({
 
           {/* Nama Institusi */}
           <div className="grid gap-2">
-            <label className="text-sm font-medium">Nama Institusi</label>
+            <label className="text-sm font-medium">
+              Nama Institusi <span className="text-destructive">*</span>
+            </label>
             <Input
               placeholder="Contoh: Universitas Teknologi Nusantara"
               value={institutionName}
@@ -1842,7 +1641,9 @@ function NewMOUButton({
 
           {/* Alamat */}
           <div className="grid gap-3">
-            <label className="text-sm font-medium">Alamat Institusi</label>
+            <label className="text-sm font-medium">
+              Alamat Institusi <span className="text-destructive">*</span>
+            </label>
             {lingkup === "Nasional" ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Select
@@ -1904,39 +1705,62 @@ function NewMOUButton({
             )}
           </div>
 
-          {/* Kontak (auto, disembunyikan dari UI) */}
-          <div className="hidden">
-            <Input
-              placeholder="Nama PIC"
-              value={contactName}
-              onChange={(e) => setContactName(e.target.value)}
-              aria-hidden
-            />
-            <Input
-              placeholder="Jabatan"
-              value={contactTitle}
-              onChange={(e) => setContactTitle(e.target.value)}
-              aria-hidden
-            />
-            <Input
-              placeholder="Email"
-              type="email"
-              value={contactEmail}
-              onChange={(e) => setContactEmail(e.target.value)}
-              aria-hidden
-            />
-            <Input
-              placeholder="No. WA (opsional)"
-              value={contactWhatsapp}
-              onChange={(e) => setContactWhatsapp(e.target.value)}
-              aria-hidden
-            />
-            <Input
-              placeholder="Website (opsional)"
-              value={contactWebsite}
-              onChange={(e) => setContactWebsite(e.target.value)}
-              aria-hidden
-            />
+          {/* Kontak person institusi */}
+          <div className="grid gap-2">
+            <div className="text-sm font-medium">Kontak person institusi</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Nama <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  placeholder="Nama PIC"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Jabatan <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  placeholder="Contoh: Dekan, Ketua Prodi"
+                  value={contactTitle}
+                  onChange={(e) => setContactTitle(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Email <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  placeholder="email@institusi.com"
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs text-muted-foreground">
+                  Nomor WhatsApp (opsional)
+                </label>
+                <Input
+                  placeholder="contoh: +62xxxx"
+                  value={contactWhatsapp}
+                  onChange={(e) => setContactWhatsapp(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2 sm:col-span-2">
+                <label className="text-xs text-muted-foreground">
+                  URL/Website mitra (opsional)
+                </label>
+                <Input
+                  placeholder="https://"
+                  value={contactWebsite}
+                  onChange={(e) => setContactWebsite(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Nomor & tanggal MOU */}
