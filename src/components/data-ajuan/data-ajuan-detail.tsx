@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -66,10 +67,12 @@ export type Documents = {
     suratPermohonanUrl?: string | null;
     proposalUrl?: string | null;
     draftAjuanUrl?: string | null;
+    reviewUrl?: string | null;
 
     suratPermohonanFile?: DocFile;
     proposalFile?: DocFile;
     draftAjuanFile?: DocFile;
+    reviewFile?: DocFile;
 
     finalUrl?: string | null;
     finalFile?: DocFile;
@@ -130,6 +133,18 @@ const fmtDateTime = (iso: string) =>
 const daysBetween = (startISO: string, endISO: string) => {
     const ms = new Date(endISO).getTime() - new Date(startISO).getTime();
     return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
+};
+
+const dateOnly = (value: string) => (value ? value.split('T')[0] : '');
+
+const masaBerlakuStatus = (startISO: string, endISO: string) => {
+    const today = new Date().setHours(0, 0, 0, 0);
+    const end = new Date(endISO).setHours(0, 0, 0, 0);
+    if (Number.isNaN(end)) return '-';
+    if (end < today) return 'Expired';
+    const diffDays = Math.round((end - today) / (1000 * 60 * 60 * 24));
+    if (diffDays <= 30) return 'Expiring';
+    return 'Aktif';
 };
 
 const labelFromPrefix = (p: DocKey) =>
@@ -237,6 +252,8 @@ export function KerjasamaDetail({
         setForm(data);
     }, [data.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    const lingkupValue = (form.scope?.[0] || '').toLowerCase() === 'internasional' ? 'Internasional' : 'Nasional';
+
     const masaHari = useMemo(() => daysBetween(form.startDate, form.endDate), [form.startDate, form.endDate]);
 
     const setField = <K extends keyof MOU>(key: K, val: MOU[K]) => {
@@ -311,6 +328,8 @@ export function KerjasamaDetail({
     // ====== Kandidat relasi (jika allDocs disediakan) ======
     const [relQuery, setRelQuery] = useState('');
     const relatedSelected = form.relatedIds || [];
+    const levelOptions: MOULevel[] = ['MOU', 'MOA', 'IA'];
+    const partnerTypeOptions: PartnerType[] = ['Universitas', 'Industri', 'Pemerintah', 'Organisasi'];
 
     const relationCandidates = useMemo(() => {
         if (!allDocs) return [];
@@ -344,123 +363,151 @@ export function KerjasamaDetail({
                 </CardHeader>
 
                 <CardContent className="space-y-6">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        {/* Judul */}
-                        <div className="grid gap-2">
-                            <Label>Judul/Tentang</Label>
-                            <Input
-                                value={form.title}
-                                onChange={(e) => setField('title', e.target.value)}
-                                placeholder="Judul/Perihal Kerjasama"
-                            />
-                        </div>
-
-                        {/* No Dok */}
-                        <div className="grid gap-2">
-                            <Label>No. Dokumen</Label>
-                            <Input value={form.documentNumber} onChange={(e) => setField('documentNumber', e.target.value)} placeholder="—" />
-                        </div>
-
-                        {/* Entry */}
-                        <div className="grid gap-2">
-                            <Label>Tanggal Entry</Label>
-                            <Input type="date" value={form.entryDate} onChange={(e) => setField('entryDate', e.target.value)} />
-                            <p className="text-xs text-muted-foreground">Tampil: {fmtDate(form.entryDate)}</p>
-                        </div>
-
-                        {/* Unit */}
-                        <div className="grid gap-2">
-                            <Label>Unit</Label>
-                            <Input
-                                value={form.faculty || form.unit || ''}
-                                onChange={(e) => {
-                                    setField('faculty', e.target.value);
-                                    setField('unit', e.target.value);
-                                }}
-                                placeholder="mis. KEDOKTERAN"
-                                className="uppercase"
-                            />
-                        </div>
-
-                        {/* Mulai */}
-                        <div className="grid gap-2">
-                            <Label>Mulai</Label>
-                            <Input type="date" value={form.startDate} onChange={(e) => setField('startDate', e.target.value)} />
-                            <p className="text-xs text-muted-foreground">Tampil: {fmtDate(form.startDate)}</p>
-                        </div>
-
-                        {/* Berakhir */}
-                        <div className="grid gap-2">
-                            <Label>Berakhir</Label>
-                            <Input type="date" value={form.endDate} onChange={(e) => setField('endDate', e.target.value)} />
-                            <p className="text-xs text-muted-foreground">Tampil: {fmtDate(form.endDate)}</p>
-                        </div>
-                    </div>
-
-                    {/* Masa & Status */}
-                    <div className="grid gap-4 sm:grid-cols-3">
-                        <div className="grid gap-1">
-                            <span className="text-sm text-muted-foreground">Masa Berlaku</span>
-                            <span className="text-sm">{masaHari} Hari</span>
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>Durasi (tahun)</Label>
-                            <Input
-                                type="number"
-                                value={form.durationYears ?? ''}
-                                onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    setField('durationYears', Number.isNaN(val) ? null : val);
-                                }}
-                                placeholder="Durasi kerjasama"
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>Status Proses</Label>
-                            <Input
-                                value={form.processStatus || ''}
-                                onChange={(e) => setField('processStatus', e.target.value)}
-                                placeholder="Pengajuan Unit Ke LKI"
-                            />
-                        </div>
-                    <div className="grid gap-2">
-                        <Label>Status Persetujuan</Label>
-                        <Input
-                            value={form.approvalStatus || ''}
-                            onChange={(e) => setField('approvalStatus', e.target.value)}
-                            placeholder="Menunggu Persetujuan"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Checkbox
-                            checked={Boolean(form.persetujuanDekan)}
-                            onCheckedChange={(v) => setField('persetujuanDekan', Boolean(v))}
-                        />
-                        <Label className="text-sm">Persetujuan Dekan</Label>
-                    </div>
-                </div>
-
-                    {/* Kontak Pengaju */}
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="grid gap-2">
-                            <Label>Telepon/HP Pengaju</Label>
-                            <Input
-                                value={form.partnerInfo?.phone || ''}
-                                onChange={(e) => setField('partnerInfo', { ...(form.partnerInfo || {}), phone: e.target.value })}
-                            />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label>Email Pengaju</Label>
-                            <Input
-                                type="email"
-                                value={form.partnerInfo?.email || ''}
-                                onChange={(e) => setField('partnerInfo', { ...(form.partnerInfo || {}), email: e.target.value })}
-                            />
+                    <div className="space-y-4">
+                        <div className="text-sm font-semibold">A. Informasi pengajuan</div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label>Nomor Dokumen</Label>
+                                <Input value={form.documentNumber} onChange={(e) => setField('documentNumber', e.target.value)} placeholder="—" />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Jenis Dokumen</Label>
+                                <Select value={form.level} onValueChange={(v) => setField('level', v as MOULevel)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih level" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {levelOptions.map((opt) => (
+                                            <SelectItem key={opt} value={opt}>
+                                                {opt}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Tanggal Entry</Label>
+                                <Input
+                                    type="date"
+                                    value={dateOnly(form.entryDate)}
+                                    onChange={(e) => setField('entryDate', e.target.value)}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Program Studi</Label>
+                                <Input
+                                    value={form.studyProgram || ''}
+                                    onChange={(e) => setField('studyProgram', e.target.value)}
+                                    placeholder="Nama prodi"
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Fakultas/Unit</Label>
+                                <Input
+                                    value={form.faculty || form.unit || ''}
+                                    onChange={(e) => {
+                                        setField('faculty', e.target.value);
+                                        setField('unit', e.target.value);
+                                    }}
+                                    placeholder="mis. KEDOKTERAN"
+                                    className="uppercase"
+                                />
+                            </div>
+                            <div className="grid gap-2 sm:col-span-2">
+                                <Label>Judul/Tentang</Label>
+                                <Input
+                                    value={form.title}
+                                    onChange={(e) => setField('title', e.target.value)}
+                                    placeholder="Judul/Perihal Kerjasama"
+                                />
+                            </div>
                         </div>
                     </div>
 
-                    {/* Detail Institusi & Kontak Lengkap */}
-                    <div className="grid gap-4 border-t pt-4">
+                    <div className="space-y-4 border-t pt-4">
+                        <div className="text-sm font-semibold">B. Periode kerja sama</div>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <div className="grid gap-2">
+                                <Label>Tanggal Mulai</Label>
+                                <Input
+                                    type="date"
+                                    value={dateOnly(form.startDate)}
+                                    onChange={(e) => setField('startDate', e.target.value)}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Durasi Masa Berlaku (tahun)</Label>
+                                <Input
+                                    type="number"
+                                    value={form.durationYears ?? ''}
+                                    onChange={(e) => {
+                                        const val = Number(e.target.value);
+                                        setField('durationYears', Number.isNaN(val) ? null : val);
+                                    }}
+                                    placeholder="Durasi kerjasama"
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Tanggal Selesai</Label>
+                                <Input
+                                    type="date"
+                                    value={dateOnly(form.endDate)}
+                                    onChange={(e) => setField('endDate', e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-1">
+                                <span className="text-sm text-muted-foreground">Masa Berlaku</span>
+                                <span className="text-sm">{masaHari} Hari</span>
+                            </div>
+                            <div className="grid gap-1">
+                                <span className="text-sm text-muted-foreground">Status Masa Berlaku</span>
+                                <span className="text-sm font-medium">{masaBerlakuStatus(form.startDate, form.endDate)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 border-t pt-4">
+                        <div className="text-sm font-semibold">C. Informasi institusi (mitra)</div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label>Jenis Mitra</Label>
+                                <Select
+                                    value={form.partnerType}
+                                    onValueChange={(v) => setField('partnerType', v as PartnerType)}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih jenis mitra" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {partnerTypeOptions.map((opt) => (
+                                            <SelectItem key={opt} value={opt}>
+                                                {opt}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Lingkup</Label>
+                                <Select
+                                    value={lingkupValue}
+                                    onValueChange={(v) => {
+                                        setField('scope', [v]);
+                                    }}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih lingkup" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Nasional">Nasional</SelectItem>
+                                        <SelectItem value="Internasional">Internasional</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
                         <div className="grid gap-2">
                             <Label>Nama Institusi</Label>
                             <Input
@@ -470,32 +517,37 @@ export function KerjasamaDetail({
                             />
                         </div>
 
-                        <div className="grid gap-4 sm:grid-cols-3">
-                            <div className="grid gap-2">
-                                <Label>Provinsi</Label>
-                                <Input
-                                    value={form.institutionAddress?.province || ''}
-                                    onChange={(e) =>
-                                        setField('institutionAddress', {
-                                            ...(form.institutionAddress || {}),
-                                            province: e.target.value,
-                                        })
-                                    }
-                                />
+                        {lingkupValue === 'Nasional' ? (
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="grid gap-2">
+                                    <Label>Provinsi</Label>
+                                    <Input
+                                        value={form.institutionAddress?.province || ''}
+                                        onChange={(e) =>
+                                            setField('institutionAddress', {
+                                                ...(form.institutionAddress || {}),
+                                                province: e.target.value,
+                                            })
+                                        }
+                                        placeholder="Provinsi"
+                                    />
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label>Kota/Kabupaten</Label>
+                                    <Input
+                                        value={form.institutionAddress?.city || ''}
+                                        onChange={(e) =>
+                                            setField('institutionAddress', {
+                                                ...(form.institutionAddress || {}),
+                                                city: e.target.value,
+                                            })
+                                        }
+                                        placeholder="Kota/Kabupaten"
+                                    />
+                                </div>
                             </div>
-                            <div className="grid gap-2">
-                                <Label>Kota/Kabupaten</Label>
-                                <Input
-                                    value={form.institutionAddress?.city || ''}
-                                    onChange={(e) =>
-                                        setField('institutionAddress', {
-                                            ...(form.institutionAddress || {}),
-                                            city: e.target.value,
-                                        })
-                                    }
-                                />
-                            </div>
-                            <div className="grid gap-2">
+                        ) : (
+                            <div className="grid gap-2 sm:w-1/2">
                                 <Label>Negara</Label>
                                 <Input
                                     value={form.institutionAddress?.country || form.country || ''}
@@ -505,9 +557,10 @@ export function KerjasamaDetail({
                                             country: e.target.value,
                                         })
                                     }
+                                    placeholder="Negara"
                                 />
                             </div>
-                        </div>
+                        )}
 
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="grid gap-2">
@@ -530,11 +583,19 @@ export function KerjasamaDetail({
                                     placeholder="Jabatan PIC"
                                 />
                             </div>
-                        </div>
-
-                        <div className="grid gap-4 sm:grid-cols-2">
                             <div className="grid gap-2">
-                                <Label>WhatsApp</Label>
+                                <Label>Email</Label>
+                                <Input
+                                    type="email"
+                                    value={form.partnerInfo?.email || ''}
+                                    onChange={(e) =>
+                                        setField('partnerInfo', { ...(form.partnerInfo || {}), email: e.target.value })
+                                    }
+                                    placeholder="email@mitra.com"
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>No. WhatsApp (opsional)</Label>
                                 <Input
                                     value={form.partnerInfo?.contactWhatsapp || ''}
                                     onChange={(e) =>
@@ -546,8 +607,8 @@ export function KerjasamaDetail({
                                     placeholder="+62..."
                                 />
                             </div>
-                            <div className="grid gap-2">
-                                <Label>Website</Label>
+                            <div className="grid gap-2 sm:col-span-2">
+                                <Label>URL/Website (opsional)</Label>
                                 <Input
                                     value={form.partnerInfo?.website || ''}
                                     onChange={(e) =>
@@ -556,6 +617,96 @@ export function KerjasamaDetail({
                                     placeholder="https://"
                                 />
                             </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 border-t pt-4">
+                        <div className="text-sm font-semibold">D. Status proses</div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label>Status Proses</Label>
+                                <Input value={form.processStatus || ''} readOnly />
+
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Status Persetujuan</Label>
+                                <Input value={form.approvalStatus || ''} readOnly />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Informasi tambahan (opsional, tidak mengubah flow) */}
+                    <div className="space-y-4 border-t pt-4">
+                        <div className="text-sm font-semibold">Informasi tambahan</div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label>Owner/Unit Penanggung Jawab</Label>
+                                <Input
+                                    value={form.owner || ''}
+                                    onChange={(e) => setField('owner', e.target.value)}
+                                    placeholder="mis. Lembaga Kerja Sama"
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Departemen</Label>
+                                <Input
+                                    value={form.department || ''}
+                                    onChange={(e) => setField('department', e.target.value)}
+                                    placeholder="Departemen/Bagian"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label>Kategori</Label>
+                                <Input
+                                    value={form.category}
+                                    onChange={(e) => setField('category', e.target.value as MOU['category'])}
+                                    placeholder="Cooperation / NDA / Grant / Vendor / Academic"
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Nilai Kerjasama</Label>
+                                <Input
+                                    type="number"
+                                    value={form.value ?? ''}
+                                    onChange={(e) => {
+                                        const val = Number(e.target.value);
+                                        setField('value', Number.isNaN(val) ? undefined : val);
+                                    }}
+                                    placeholder="Rp (opsional)"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label>Tanggal Tanda Tangan</Label>
+                                <Input
+                                    type="date"
+                                    value={form.signDate || ''}
+                                    onChange={(e) => setField('signDate', e.target.value)}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Lampiran URL (opsional)</Label>
+                                <Input
+                                    value={form.fileUrl || ''}
+                                    onChange={(e) => setField('fileUrl', e.target.value)}
+                                    placeholder="Link lampiran umum"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label>Catatan Internal</Label>
+                            <Textarea
+                                value={form.notes || ''}
+                                onChange={(e) => setField('notes', e.target.value)}
+                                placeholder="Catatan tambahan"
+                                rows={3}
+                            />
                         </div>
                     </div>
 

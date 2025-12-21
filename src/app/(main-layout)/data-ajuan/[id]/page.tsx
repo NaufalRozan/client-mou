@@ -211,6 +211,12 @@ async function fetchMouById(id: string): Promise<{ mou: MOU; flow: FlowMeta } | 
                 pengajuRole: (k.pengajuRole as string) || k.pengaju_role || null,
             };
 
+            const processStatus =
+                k.statusProses ||
+                formatFlowStatus(flowStatus as any) ||
+                (k.status as string) ||
+                '';
+
             const mou: MOU = {
                 id: k.id,
                 level: (k.jenis as any) || 'MOU',
@@ -231,7 +237,7 @@ async function fetchMouById(id: string): Promise<{ mou: MOU; flow: FlowMeta } | 
                 documents: {
                     reviewUrl: k.pdfReviewURL || undefined,
                 },
-                processStatus: k.statusProses,
+                processStatus,
                 approvalStatus: k.statusPersetujuan,
                 statusNote: k.catatanStatus,
                 fileUrl: k.lampiranURL,
@@ -325,20 +331,24 @@ export default function KerjasamaDetailPage() {
                 alamatProvinsi: next.institutionAddress?.province,
                 alamatKota: next.institutionAddress?.city,
                 alamatNegara: next.institutionAddress?.country,
-                kontakNama: next.partnerInfo?.contactName || next.partnerInfo?.contactTitle,
+                kontakNama: next.partnerInfo?.contactName,
                 kontakJabatan: next.partnerInfo?.contactTitle,
                 kontakEmail: next.partnerInfo?.email,
                 kontakWA: next.partnerInfo?.contactWhatsapp,
                 kontakWebsite: next.partnerInfo?.website,
-                durasiKerjasama: next.durationYears,
-                persetujuanDekan: next.persetujuanDekan,
+                durasiKerjasama: next.durationYears ?? undefined,
+                persetujuanDekan: next.persetujuanDekan ?? undefined,
                 lingkup: next.scope.join(','),
                 lampiranURL: next.fileUrl,
-                statusDokumen: next.status,
-                statusProses: next.processStatus,
-                statusPersetujuan: next.approvalStatus,
-                catatanStatus: next.statusNote,
                 idDokumenRelasi: next.relatedIds || [],
+                // field tambahan detail, tidak mengubah flow
+                studyProgram: next.studyProgram,
+                owner: next.owner,
+                department: next.department,
+                category: next.category,
+                value: next.value,
+                signDate: next.signDate,
+                notes: next.notes,
             };
 
             await kerjasamaAPI.update(next.id, payload);
