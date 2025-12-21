@@ -57,7 +57,13 @@ import {
 } from "lucide-react";
 
 import { getAuth, isAuthed, type AuthUser } from "@/lib/proto/auth";
-import { kerjasamaAPI, type KerjasamaRequest } from "@/lib/api/kerjasama";
+import {
+  kerjasamaAPI,
+  type AjuanAllowedAction,
+  type AjuanReviewLog,
+  type AjuanStatus,
+  type KerjasamaRequest
+} from "@/lib/api/kerjasama";
 import { unitAPI } from "@/lib/api/unit";
 import { authAPI } from "@/lib/api/auth";
 import { toast } from "sonner";
@@ -73,10 +79,26 @@ import {
 } from "@/components/ui/alert-dialog";
 
 /* ================= Roles ================= */
-type Role = "LEMBAGA_KERJA_SAMA" | "FAKULTAS" | "PRODI" | "ORANG_LUAR" | "WR";
+type Role =
+  | "LEMBAGA_KERJA_SAMA"
+  | "FAKULTAS"
+  | "PRODI"
+  | "ORANG_LUAR"
+  | "WR"
+  | "DKG"
+  | "DKGE"
+  | "BLK";
 
 /* ================= Types ================= */
-type MOUStatus = "Draft" | "Active" | "Expiring" | "Expired" | "Terminated";
+type FlowStatus = AjuanStatus;
+type MOUStatus =
+  | FlowStatus
+  | "Draft"
+  | "Active"
+  | "Expiring"
+  | "Expired"
+  | "Terminated";
+type AllowedAction = AjuanAllowedAction;
 type MOULevel = "MOU" | "MOA" | "IA";
 type PartnerType =
   | "Universitas"
@@ -113,6 +135,8 @@ type InstitutionAddress = {
   country?: string;
 };
 
+type ReviewLog = AjuanReviewLog;
+
 type MOU = {
   id: string;
   level: MOULevel;
@@ -145,6 +169,16 @@ type MOU = {
   fileUrl?: string;
   notes?: string;
   relatedIds?: string[];
+  // Flow-related fields
+  flowStatus?: FlowStatus;
+  returnToStatus?: FlowStatus | null;
+  revisionRequestedBy?: string | null;
+  allowedActions?: AllowedAction[];
+  reviewHistory?: ReviewLog[];
+  submittedAt?: string | null;
+  resubmittedAt?: string | null;
+  completedAt?: string | null;
+  pengajuRole?: string | null;
 };
 
 /* ============== Helpers ============== */
@@ -159,6 +193,36 @@ const daysBetween = (startISO: string, endISO: string) => {
   const ms = new Date(endISO).getTime() - new Date(startISO).getTime();
   return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
 };
+
+const FLOW_STATUS_LABEL: Record<FlowStatus, string> = {
+  DRAFT: "Draft",
+  PENGAJUAN_DOKUMEN: "Pengajuan Dokumen",
+  VERIFIKASI_FAKULTAS: "Verifikasi Fakultas",
+  REVIEW_DKG: "Review DKG",
+  REVIEW_DKGE: "Review DKGE",
+  REVIEW_WR: "Review WR",
+  REVIEW_BLK: "Review BLK",
+  REVISI: "Revisi",
+  SELESAI: "Selesai"
+};
+
+const formatFlowStatus = (status?: FlowStatus | string | null) => {
+  if (!status) return "-";
+  const upper = status.toUpperCase() as FlowStatus;
+  return FLOW_STATUS_LABEL[upper] || status;
+};
+
+const FLOW_STATUS_OPTIONS: { value: FlowStatus; label: string }[] = [
+  { value: "DRAFT", label: FLOW_STATUS_LABEL.DRAFT },
+  { value: "PENGAJUAN_DOKUMEN", label: FLOW_STATUS_LABEL.PENGAJUAN_DOKUMEN },
+  { value: "VERIFIKASI_FAKULTAS", label: FLOW_STATUS_LABEL.VERIFIKASI_FAKULTAS },
+  { value: "REVIEW_DKG", label: FLOW_STATUS_LABEL.REVIEW_DKG },
+  { value: "REVIEW_DKGE", label: FLOW_STATUS_LABEL.REVIEW_DKGE },
+  { value: "REVIEW_WR", label: FLOW_STATUS_LABEL.REVIEW_WR },
+  { value: "REVIEW_BLK", label: FLOW_STATUS_LABEL.REVIEW_BLK },
+  { value: "REVISI", label: FLOW_STATUS_LABEL.REVISI },
+  { value: "SELESAI", label: FLOW_STATUS_LABEL.SELESAI }
+];
 
 const PARTNER_TYPE_OPTIONS: PartnerType[] = ["Universitas", "Dudika"];
 const LINGKUP_OPTIONS = ["Nasional", "Internasional"] as const;
@@ -309,15 +373,11 @@ const buildCreatePayload = (m: Omit<MOU, "id">): KerjasamaRequest => ({
   kontakWA: normalizeOptionalText(m.partnerInfo?.contactWhatsapp),
   kontakWebsite: normalizeOptionalText(m.partnerInfo?.website),
   durasiKerjasama: m.durationYears ?? undefined,
-  statusProses: normalizeOptionalText(m.processStatus),
-  statusPersetujuan: normalizeOptionalText(m.approvalStatus),
-  catatanStatus: normalizeOptionalText(m.statusNote),
   // Upload dokumen hanya dilakukan saat edit, tidak saat create
   lampiranURL: undefined,
   pdfReviewURL: undefined,
   persetujuanDekan:
     typeof m.persetujuanDekan === "boolean" ? m.persetujuanDekan : undefined,
-  statusDokumen: m.status,
   idDokumenRelasi: m.relatedIds ?? []
 });
 
@@ -343,7 +403,7 @@ function DateBadge({ date }: { date: string }) {
 /* ============== Dummy data awal (contoh) ============== */
 const initialData: MOU[] = [
   {
-    id: "MOU-001",
+    id: "AJ-001",
     level: "MOU",
     documentNumber: "MOU/UMY/2025/01",
     title: "KERJASAMA PENELITIAN DAN PERTUKARAN MAHASISWA",
@@ -358,19 +418,36 @@ const initialData: MOU[] = [
     owner: "Unit Teknik",
     startDate: "2025-07-15",
     endDate: "2027-07-15",
-    status: "Active",
+    status: "REVIEW_DKG",
+    flowStatus: "REVIEW_DKG",
     documents: {
       suratPermohonanUrl: "/dokumen/mou-001-surat.pdf",
       proposalUrl: "/dokumen/mou-001-proposal.pdf",
       draftAjuanUrl: null
     },
-    processStatus: "Ditandatangani",
-    approvalStatus: "Disetujui", // <- sudah ACC -> TIDAK tampil di halaman ini
-    statusNote: "",
-    relatedIds: []
+    processStatus: "Menunggu review DKG",
+    approvalStatus: "Menunggu Review",
+    statusNote: "Menunggu review DKG",
+    relatedIds: [],
+    allowedActions: ["approve", "request_revision"],
+    submittedAt: "2025-07-10T07:00:00.000Z",
+    resubmittedAt: null,
+    completedAt: null,
+    returnToStatus: null,
+    revisionRequestedBy: null,
+    pengajuRole: "PRODI",
+    reviewHistory: [
+      {
+        stageStatus: "VERIFIKASI_FAKULTAS",
+        action: "APPROVE",
+        note: "Verifikasi Fakultas selesai",
+        actorRole: "FAKULTAS",
+        createdAt: "2025-07-12T07:00:00.000Z"
+      }
+    ]
   },
   {
-    id: "MOA-001",
+    id: "AJ-002",
     level: "MOA",
     documentNumber: "—",
     title:
@@ -390,7 +467,8 @@ const initialData: MOU[] = [
     owner: "Unit Pengaju",
     startDate: "2025-08-29",
     endDate: "2025-08-29",
-    status: "Active",
+    status: "REVISI",
+    flowStatus: "REVISI",
     documents: {
       suratPermohonanUrl: "/dokumen/surat-permohonan.pdf",
       proposalUrl: null,
@@ -400,13 +478,28 @@ const initialData: MOU[] = [
         url: "/dokumen/draf-ajuan-contoh.pdf"
       }
     },
-    processStatus: "Pengajuan Unit Ke LKI",
-    approvalStatus: "Menunggu Persetujuan", // <- pending -> TAMPIL
-    statusNote: "",
-    relatedIds: ["MOU-001"]
+    processStatus: "Diminta revisi WR",
+    approvalStatus: "Menunggu Resubmit",
+    statusNote: "Lengkapi lampiran A",
+    relatedIds: ["AJ-001"],
+    allowedActions: ["edit", "resubmit"],
+    returnToStatus: "REVIEW_WR",
+    revisionRequestedBy: "WR",
+    submittedAt: "2025-08-30T03:00:00.000Z",
+    resubmittedAt: null,
+    completedAt: null,
+    reviewHistory: [
+      {
+        stageStatus: "REVIEW_WR",
+        action: "REQUEST_REVISION",
+        note: "Lengkapi lampiran A",
+        actorRole: "WR",
+        createdAt: "2025-08-30T03:00:00.000Z"
+      }
+    ]
   },
   {
-    id: "IA-001",
+    id: "AJ-003",
     level: "IA",
     documentNumber: "IA/2025/05",
     title: "IMPLEMENTASI PELATIHAN BERSAMA INDUSTRI XYZ",
@@ -421,16 +514,23 @@ const initialData: MOU[] = [
     owner: "Fakultas Ekonomi",
     startDate: "2025-09-05",
     endDate: "2026-09-05",
-    status: "Draft",
+    status: "DRAFT",
+    flowStatus: "DRAFT",
     documents: {
       suratPermohonanUrl: null,
       proposalUrl: null,
       draftAjuanUrl: null
     },
-    processStatus: "Penyusunan draft",
-    approvalStatus: "Belum Disetujui", // <- pending -> TAMPIL
-    statusNote: "Menunggu dokumen tambahan",
-    relatedIds: ["MOU-001"]
+    processStatus: "Draft",
+    approvalStatus: "Belum Disetujui",
+    statusNote: "Menunggu submit",
+    relatedIds: ["AJ-001"],
+    allowedActions: ["submit", "edit"],
+    submittedAt: null,
+    resubmittedAt: null,
+    completedAt: null,
+    returnToStatus: null,
+    revisionRequestedBy: null
   }
 ];
 
@@ -459,7 +559,9 @@ export default function DataAjuanPage() {
 
   // filters
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<MOUStatus | "all">("all");
+  const [flowStatusFilter, setFlowStatusFilter] = useState<FlowStatus | "all">(
+    "all"
+  );
   const [level, setLevel] = useState<MOULevel | "all">("all");
 
   // pagination
@@ -523,12 +625,47 @@ export default function DataAjuanPage() {
         console.error("Load unit map error:", err);
       }
 
-      const res = await kerjasamaAPI.getAll();
+      const res = await kerjasamaAPI.getAllAjuan();
       if (res.status === "success") {
         // map backend kerjasama to frontend MOU type
         const mapped = res.data.map(
           (k) =>
           ({
+            flowStatus:
+              (k.status as FlowStatus) ||
+              (k.statusProses as FlowStatus) ||
+              ((k.statusDokumen || "").toUpperCase() as FlowStatus) ||
+              "DRAFT",
+            returnToStatus:
+              ((k as any).returnToStatus ??
+                (k as any).return_to_status ??
+                null) as FlowStatus | null,
+            revisionRequestedBy:
+              ((k as any).revisionRequestedBy ??
+                (k as any).revision_requested_by ??
+                null) as string | null,
+            allowedActions:
+              ((k as any).allowed_actions as AllowedAction[]) ||
+              ((k as any).allowedActions as AllowedAction[]) ||
+              [],
+            reviewHistory:
+              ((k as any).review_history as ReviewLog[]) ||
+              ((k as any).reviewHistory as ReviewLog[]) ||
+              [],
+            submittedAt:
+              ((k as any).submittedAt as string | null) ||
+              ((k as any).submitted_at as string | null) ||
+              null,
+            resubmittedAt:
+              ((k as any).resubmittedAt as string | null) ||
+              ((k as any).resubmitted_at as string | null) ||
+              null,
+            completedAt:
+              ((k as any).completedAt as string | null) ||
+              ((k as any).completed_at as string | null) ||
+              null,
+            pengajuRole:
+              (k as any).pengajuRole || (k as any).pengaju_role || null,
             id: k.id,
             level: (k.jenis as MOULevel) || "MOU",
             documentNumber: k.nomorDokumen || "",
@@ -548,7 +685,10 @@ export default function DataAjuanPage() {
             owner: "-",
             startDate: k.tanggalMulai || new Date().toISOString(),
             endDate: k.tanggalBerakhir || new Date().toISOString(),
-            status: (k.statusDokumen as MOUStatus) || "Draft",
+            status:
+              ((k.statusDokumen || "") as MOUStatus) ||
+              (((k as any).status as FlowStatus) as MOUStatus) ||
+              "Draft",
             partnerInfo: {
               phone: k.teleponPengaju || undefined,
               email: k.emailPengaju || undefined,
@@ -567,9 +707,16 @@ export default function DataAjuanPage() {
             documents: {
               reviewUrl: k.pdfReviewURL || undefined
             },
-            processStatus: k.statusProses,
+            processStatus: k.statusProses || formatFlowStatus(k.status as any),
             approvalStatus: k.statusPersetujuan,
-            statusNote: k.catatanStatus,
+            statusNote:
+              k.catatanStatus ||
+              ((((k as any).review_history ||
+                (k as any).reviewHistory ||
+                []) as ReviewLog[])
+                .slice()
+                .reverse()
+                .find((r) => r?.note)?.note ?? undefined),
             fileUrl: k.lampiranURL,
             relatedIds: k.idDokumenRelasi
           } as MOU)
@@ -597,9 +744,16 @@ export default function DataAjuanPage() {
 
   // === Hanya data pending: approvalStatus ≠ "Disetujui"
   const pendingRows = useMemo(() => {
-    return rows.filter(
-      (d) => (d.approvalStatus || "").toLowerCase() !== "disetujui"
-    );
+    return rows.filter((d) => {
+      const flow = (d.flowStatus ||
+        (typeof d.status === "string"
+          ? (d.status.toUpperCase() as FlowStatus)
+          : undefined)) as FlowStatus | undefined;
+      const isFinished = flow === "SELESAI";
+      const isDisetujui =
+        (d.approvalStatus || "").toLowerCase() === "disetujui";
+      return !isFinished && !isDisetujui;
+    });
   }, [rows]);
 
   // delete
@@ -655,12 +809,17 @@ export default function DataAjuanPage() {
           .toLowerCase()
           .includes(txt);
 
-      const matchStatus = status === "all" || d.status === status;
+      const currentFlow = (d.flowStatus ||
+        (typeof d.status === "string" ? d.status.toUpperCase() : undefined)) as
+        | FlowStatus
+        | undefined;
+      const matchStatus =
+        flowStatusFilter === "all" || currentFlow === flowStatusFilter;
       const matchLevel = level === "all" || d.level === level;
 
       return matchQ && matchStatus && matchLevel;
     });
-  }, [pendingRows, q, status, level]);
+  }, [pendingRows, q, flowStatusFilter, level]);
 
   // pagination
   const total = filtered.length;
@@ -707,7 +866,9 @@ export default function DataAjuanPage() {
       }
     } catch (error) {
       console.error("Create kerjasama error:", error);
-      toast.error("Gagal membuat ajuan");
+      const msg =
+        (error as Error)?.message || "Gagal membuat ajuan, periksa kembali data.";
+      toast.error(msg);
     }
   };
 
@@ -767,15 +928,6 @@ export default function DataAjuanPage() {
           normalizeOptionalText(m.partnerInfo.website);
       if (m.durationYears !== undefined)
         payload.durasiKerjasama = m.durationYears ?? undefined;
-      if (m.processStatus !== undefined)
-        payload.statusProses =
-          normalizeOptionalText(m.processStatus);
-      if (m.approvalStatus !== undefined)
-        payload.statusPersetujuan =
-          normalizeOptionalText(m.approvalStatus);
-      if (m.statusNote !== undefined)
-        payload.catatanStatus =
-          normalizeOptionalText(m.statusNote);
       // Upload dokumen (lampiranURL & pdfReviewURL) bisa di-update saat edit
       if (m.fileUrl !== undefined)
         payload.lampiranURL = normalizeOptionalText(m.fileUrl);
@@ -784,7 +936,6 @@ export default function DataAjuanPage() {
           normalizeOptionalText(m.documents?.reviewUrl || undefined);
       if (m.persetujuanDekan !== undefined)
         payload.persetujuanDekan = m.persetujuanDekan ?? undefined;
-      if (m.status) payload.statusDokumen = m.status;
       if (m.relatedIds !== undefined) payload.idDokumenRelasi = m.relatedIds;
 
       const res = await kerjasamaAPI.update(id, payload);
@@ -845,7 +996,7 @@ export default function DataAjuanPage() {
               <Select
                 onValueChange={(v) => {
                   setPage(1);
-                  setStatus(v as any);
+                  setFlowStatusFilter(v as any);
                 }}
                 defaultValue="all"
               >
@@ -854,11 +1005,11 @@ export default function DataAjuanPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Semua status</SelectItem>
-                  <SelectItem value="Draft">Draft</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Expiring">Expiring</SelectItem>
-                  <SelectItem value="Expired">Expired</SelectItem>
-                  <SelectItem value="Terminated">Terminated</SelectItem>
+                  {FLOW_STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -929,9 +1080,28 @@ export default function DataAjuanPage() {
                             row.startDate,
                             row.endDate
                           );
+                          const flow = (row.flowStatus ||
+                            (typeof row.status === "string"
+                              ? (row.status.toUpperCase() as FlowStatus)
+                              : undefined)) as FlowStatus | undefined;
+                          const allowed = row.allowedActions || [];
                           const related = (row.relatedIds || [])
                             .map((id) => rows.find((r) => r.id === id))
                             .filter(Boolean) as MOU[];
+                          const lastReviewEntry = (row.reviewHistory || [])
+                            .slice()
+                            .sort((a, b) => {
+                              const aTime = new Date(
+                                a?.createdAt || ""
+                              ).getTime();
+                              const bTime = new Date(
+                                b?.createdAt || ""
+                              ).getTime();
+                              return aTime - bTime;
+                            })
+                            .at(-1);
+                          const lastNote =
+                            lastReviewEntry?.note || row.statusNote || "-";
 
                           return (
                             <TableRow key={row.id} className="align-top">
@@ -1113,19 +1283,69 @@ export default function DataAjuanPage() {
                               </TableCell>
 
                               <TableCell>
-                                <div className="space-y-1">
-                                  <div>{row.processStatus || "-"}</div>
-                                  <div className="text-sm">
-                                    Status Persetujuan:{" "}
-                                    <span className="font-medium text-rose-600">
-                                      {row.approvalStatus || "-"}
-                                    </span>
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant="secondary">
+                                      {formatFlowStatus(flow)}
+                                    </Badge>
+                                    {row.returnToStatus ? (
+                                      <Badge variant="outline" className="text-xs">
+                                        Kembali ke{" "}
+                                        {formatFlowStatus(row.returnToStatus)}
+                                      </Badge>
+                                    ) : null}
                                   </div>
+
+                                  {row.revisionRequestedBy ? (
+                                    <div className="text-xs text-amber-700">
+                                      Diminta revisi oleh{" "}
+                                      {row.revisionRequestedBy}
+                                    </div>
+                                  ) : null}
+
+                                  {allowed.length ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {allowed.map((act) => (
+                                        <Badge
+                                          key={act}
+                                          variant="outline"
+                                          className="text-[11px]"
+                                        >
+                                          {act.replace("_", " ")}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-muted-foreground">
+                                      Tidak ada aksi tersedia
+                                    </div>
+                                  )}
                                 </div>
                               </TableCell>
 
                               <TableCell className="text-sm">
-                                {row.statusNote || "-"}
+                                <div className="space-y-1">
+                                  {lastReviewEntry ? (
+                                    <>
+                                      <div className="flex items-center gap-2">
+                                        <Badge variant="outline">
+                                          {formatFlowStatus(
+                                            (lastReviewEntry.stageStatus ||
+                                              row.flowStatus) as FlowStatus
+                                          )}
+                                        </Badge>
+                                        {lastReviewEntry.actorRole ? (
+                                          <span className="text-xs text-muted-foreground">
+                                            {lastReviewEntry.actorRole}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      <div>{lastNote}</div>
+                                    </>
+                                  ) : (
+                                    <span>{lastNote}</span>
+                                  )}
+                                </div>
                               </TableCell>
 
                               <TableCell className="text-right">
@@ -1522,7 +1742,8 @@ function NewMOUButton({
       owner: "-",
       startDate,
       endDate,
-      status: "Draft",
+      status: "DRAFT",
+      flowStatus: "DRAFT",
       // Dokumen tidak di-upload saat create, hanya saat edit
       documents: undefined,
       institutionAddress: address,
@@ -1751,7 +1972,7 @@ function NewMOUButton({
                   value={documentNumber}
                   readOnly
                 />
-               
+
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1953,7 +2174,7 @@ function NewMOUButton({
 
         <SheetFooter className="mt-6">
           <Button onClick={handleSave} disabled={!canSave}>
-            Simpan (UI-only)
+            Simpan
           </Button>
         </SheetFooter>
       </SheetContent>

@@ -4,33 +4,26 @@ import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { Toaster } from "sonner";
+import StoreProvider from "./StoreProvider";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.APP_URL
       ? `${process.env.APP_URL}`
       : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : `http://localhost:${process.env.PORT || 3000}`
+        ? `https://${process.env.VERCEL_URL}`
+        : `http://localhost:${process.env.PORT || 3000}`
   ),
-  title: "shadcn/ui sidebar",
+  title: "SIM Kepegawaian - Universitas Lamappapoleonro",
+  icons: {
+    shortcut: "/favicon.ico",
+    icon: "/favicon.ico"
+  },
   description:
-    "A stunning and functional retractable sidebar for Next.js built on top of shadcn/ui complete with desktop and mobile responsiveness.",
+    "Platform resmi Universitas Lamappapoleonro untuk pengelolaan data kepegawaian, absensi, dan cuti secara terintegrasi.",
   alternates: {
     canonical: "/"
-  },
-  openGraph: {
-    url: "/",
-    title: "shadcn/ui sidebar",
-    description:
-      "A stunning and functional retractable sidebar for Next.js built on top of shadcn/ui complete with desktop and mobile responsiveness.",
-    type: "website"
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "shadcn/ui sidebar",
-    description:
-      "A stunning and functional retractable sidebar for Next.js built on top of shadcn/ui complete with desktop and mobile responsiveness."
   }
 };
 
@@ -43,7 +36,8 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={GeistSans.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
+          <StoreProvider>{children}</StoreProvider>
+          <Toaster richColors closeButton />
         </ThemeProvider>
       </body>
     </html>

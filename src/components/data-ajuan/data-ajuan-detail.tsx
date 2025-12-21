@@ -30,13 +30,34 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 
 /* =================== Types (selaras dengan list) =================== */
-export type MOUStatus = 'Draft' | 'Active' | 'Expiring' | 'Expired' | 'Terminated';
+type FlowStatus =
+    | 'DRAFT'
+    | 'PENGAJUAN_DOKUMEN'
+    | 'VERIFIKASI_FAKULTAS'
+    | 'REVIEW_DKG'
+    | 'REVIEW_DKGE'
+    | 'REVIEW_WR'
+    | 'REVIEW_BLK'
+    | 'REVISI'
+    | 'SELESAI';
+
+export type MOUStatus =
+    | 'Draft'
+    | 'Active'
+    | 'Expiring'
+    | 'Expired'
+    | 'Terminated'
+    | FlowStatus;
 export type MOULevel = 'MOU' | 'MOA' | 'IA';
 export type PartnerType = 'Universitas' | 'Industri' | 'Pemerintah' | 'Organisasi';
 
 export type PartnerInfo = {
     phone?: string;
     email?: string;
+    contactName?: string;
+    contactTitle?: string;
+    contactWhatsapp?: string;
+    website?: string;
 };
 
 export type DocFile = { name: string; url: string } | null;
@@ -63,6 +84,11 @@ export type MOU = {
     partner: string;
     partnerType: PartnerType;
     partnerInfo?: PartnerInfo;
+    institutionAddress?: {
+        province?: string;
+        city?: string;
+        country?: string;
+    };
     country: string;
     faculty: string;
     studyProgram?: string;
@@ -75,6 +101,8 @@ export type MOU = {
     signDate?: string;
     startDate: string;
     endDate: string;
+    durationYears?: number | null;
+    persetujuanDekan?: boolean | null;
     status: MOUStatus;
     documents?: Documents;
     processStatus?: string;
@@ -376,6 +404,18 @@ export function KerjasamaDetail({
                             <span className="text-sm">{masaHari} Hari</span>
                         </div>
                         <div className="grid gap-2">
+                            <Label>Durasi (tahun)</Label>
+                            <Input
+                                type="number"
+                                value={form.durationYears ?? ''}
+                                onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    setField('durationYears', Number.isNaN(val) ? null : val);
+                                }}
+                                placeholder="Durasi kerjasama"
+                            />
+                        </div>
+                        <div className="grid gap-2">
                             <Label>Status Proses</Label>
                             <Input
                                 value={form.processStatus || ''}
@@ -383,15 +423,22 @@ export function KerjasamaDetail({
                                 placeholder="Pengajuan Unit Ke LKI"
                             />
                         </div>
-                        <div className="grid gap-2">
-                            <Label>Status Persetujuan</Label>
-                            <Input
-                                value={form.approvalStatus || ''}
-                                onChange={(e) => setField('approvalStatus', e.target.value)}
-                                placeholder="Menunggu Persetujuan"
-                            />
-                        </div>
+                    <div className="grid gap-2">
+                        <Label>Status Persetujuan</Label>
+                        <Input
+                            value={form.approvalStatus || ''}
+                            onChange={(e) => setField('approvalStatus', e.target.value)}
+                            placeholder="Menunggu Persetujuan"
+                        />
                     </div>
+                    <div className="flex items-center gap-2">
+                        <Checkbox
+                            checked={Boolean(form.persetujuanDekan)}
+                            onCheckedChange={(v) => setField('persetujuanDekan', Boolean(v))}
+                        />
+                        <Label className="text-sm">Persetujuan Dekan</Label>
+                    </div>
+                </div>
 
                     {/* Kontak Pengaju */}
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -409,6 +456,106 @@ export function KerjasamaDetail({
                                 value={form.partnerInfo?.email || ''}
                                 onChange={(e) => setField('partnerInfo', { ...(form.partnerInfo || {}), email: e.target.value })}
                             />
+                        </div>
+                    </div>
+
+                    {/* Detail Institusi & Kontak Lengkap */}
+                    <div className="grid gap-4 border-t pt-4">
+                        <div className="grid gap-2">
+                            <Label>Nama Institusi</Label>
+                            <Input
+                                value={form.partner}
+                                onChange={(e) => setField('partner', e.target.value)}
+                                placeholder="Nama institusi/mitra"
+                            />
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <div className="grid gap-2">
+                                <Label>Provinsi</Label>
+                                <Input
+                                    value={form.institutionAddress?.province || ''}
+                                    onChange={(e) =>
+                                        setField('institutionAddress', {
+                                            ...(form.institutionAddress || {}),
+                                            province: e.target.value,
+                                        })
+                                    }
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Kota/Kabupaten</Label>
+                                <Input
+                                    value={form.institutionAddress?.city || ''}
+                                    onChange={(e) =>
+                                        setField('institutionAddress', {
+                                            ...(form.institutionAddress || {}),
+                                            city: e.target.value,
+                                        })
+                                    }
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Negara</Label>
+                                <Input
+                                    value={form.institutionAddress?.country || form.country || ''}
+                                    onChange={(e) =>
+                                        setField('institutionAddress', {
+                                            ...(form.institutionAddress || {}),
+                                            country: e.target.value,
+                                        })
+                                    }
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label>Kontak Nama</Label>
+                                <Input
+                                    value={form.partnerInfo?.contactName || ''}
+                                    onChange={(e) =>
+                                        setField('partnerInfo', { ...(form.partnerInfo || {}), contactName: e.target.value })
+                                    }
+                                    placeholder="Nama PIC"
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Jabatan</Label>
+                                <Input
+                                    value={form.partnerInfo?.contactTitle || ''}
+                                    onChange={(e) =>
+                                        setField('partnerInfo', { ...(form.partnerInfo || {}), contactTitle: e.target.value })
+                                    }
+                                    placeholder="Jabatan PIC"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-2">
+                                <Label>WhatsApp</Label>
+                                <Input
+                                    value={form.partnerInfo?.contactWhatsapp || ''}
+                                    onChange={(e) =>
+                                        setField('partnerInfo', {
+                                            ...(form.partnerInfo || {}),
+                                            contactWhatsapp: e.target.value,
+                                        })
+                                    }
+                                    placeholder="+62..."
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Website</Label>
+                                <Input
+                                    value={form.partnerInfo?.website || ''}
+                                    onChange={(e) =>
+                                        setField('partnerInfo', { ...(form.partnerInfo || {}), website: e.target.value })
+                                    }
+                                    placeholder="https://"
+                                />
+                            </div>
                         </div>
                     </div>
 

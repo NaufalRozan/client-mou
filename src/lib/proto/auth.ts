@@ -1,6 +1,14 @@
 // Enhanced auth helpers with backend integration
 
-export type Role = "LEMBAGA_KERJA_SAMA" | "FAKULTAS" | "PRODI" | "ORANG_LUAR" | "WR";
+export type Role =
+  | "LEMBAGA_KERJA_SAMA"
+  | "FAKULTAS"
+  | "PRODI"
+  | "ORANG_LUAR"
+  | "WR"
+  | "DKG"
+  | "DKGE"
+  | "BLK";
 
 export type AuthUser = {
     id?: string;
@@ -98,15 +106,23 @@ export function mapBackendRoleToLocal(backendRole: string | null): Role {
     const roleMapping: Record<string, Role> = {
         'lembaga_kerja_sama': 'LEMBAGA_KERJA_SAMA',
         'fakultas': 'FAKULTAS',
+        'fk': 'FAKULTAS',
         'prodi': 'PRODI',
         'orang_luar': 'ORANG_LUAR',
         'wr': 'WR',
+        'dkg': 'DKG',
+        'dkge': 'DKGE',
+        'blk': 'BLK',
         // Add exact matches too
         'LEMBAGA_KERJA_SAMA': 'LEMBAGA_KERJA_SAMA',
         'FAKULTAS': 'FAKULTAS',
+        'FK': 'FAKULTAS',
         'PRODI': 'PRODI',
         'ORANG_LUAR': 'ORANG_LUAR',
         'WR': 'WR',
+        'DKG': 'DKG',
+        'DKGE': 'DKGE',
+        'BLK': 'BLK',
     };
 
     return roleMapping[backendRole] || 'LEMBAGA_KERJA_SAMA';

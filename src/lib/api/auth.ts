@@ -113,11 +113,10 @@ class AuthAPI {
   private async fetchProfile(): Promise<AuthUser | null> {
     const domain = DOMAIN || BASE_URL.replace(/\/api\/?$/, "");
     const fallbackPaths = [
-      process.env.NEXT_PUBLIC_USER_PROFILE_PATH, // full URL or relative override
-      `${domain}/api/v1/users/access-token`,
-      `${BASE_URL.replace(/\/$/, "")}/v1/users/access-token`,
-      "/v1/users/access-token",
-      "/api/v1/users/access-token"
+      process.env.NEXT_PUBLIC_USER_PROFILE_PATH, // full URL atau relative override
+      `${domain}/api/v1/users/access-token`, // absolute (tidak double prefix)
+      `${BASE_URL.replace(/\/$/, "")}/users/access-token`, // gunakan base apa adanya
+      "/users/access-token" // relative ke BASE_URL supaya tidak /api/v1/api/v1
     ].filter(Boolean) as string[];
 
     for (const path of fallbackPaths) {
